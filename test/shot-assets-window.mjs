@@ -76,17 +76,16 @@ export async function verifyVideoAssetReview(page, testRoot) {
 /** 在临时工程移走一张已绑定的图，再从素材库恢复，检查两个出场引用和首帧状态。 */
 async function verifyOfflineImage(page, testRoot) {
   const current = await page.evaluate(async () => (await window.studio.initial()).current)
-  assert.ok(current.root.startsWith((await fs.realpath(testRoot)) + path.sep))
+  // 移动素材前确认工程直属于测试目录，按当前平台的路径规则比较。
+  const root = await fs.realpath(current.root)
+  assert.equal(path.relative(await fs.realpath(testRoot), path.dirname(root)), '')
   const card = current.data.cards.find((item) => item.name === '叶宁')
   const item = current.data.assets.find((asset) => asset.id === settingImage(card))
   assert.equal(item.id, current.data.episodes[0].shots[0].referenceId)
   const button = (name) => page.getByRole('button', { name, exact: true })
   const review = page.getByRole('region', { name: '出场资产核对' })
   await button('项目工作台').click()
-  await fs.rename(
-    path.join(current.root, 'media', item.id + item.ext),
-    path.join(testRoot, '移出的参考图.png')
-  )
+  await fs.rename(path.join(root, 'media', item.id + item.ext), path.join(testRoot, '移出的参考图.png'))
   await page.locator('.home-projects button').filter({ hasText: current.root }).click()
   await button('分镜工作台').click()
   await review.getByText(/角色「叶宁 · 旅行风衣」的参考图文件已丢失或损坏/).waitFor()
