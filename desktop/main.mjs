@@ -54,8 +54,13 @@ protocol.registerSchemesAsPrivileged([
     privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true }
   }
 ])
-if (!root || !app.requestSingleInstanceLock()) app.quit()
-else {
+if (!root) app.quit()
+else if (!app.requestSingleInstanceLock()) {
+  if (dev) {
+    console.error('无法启动开发版：已有帧序实例正在使用同一配置目录。请完全退出该实例后重试 npm run dev。')
+    app.exit(1)
+  } else app.quit()
+} else {
   app.on('second-instance', () => {
     if (win?.isMinimized()) win.restore()
     win?.focus()

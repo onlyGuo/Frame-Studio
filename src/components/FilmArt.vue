@@ -13,28 +13,8 @@ function paint() {
   el.height = h * d
   const ctx = el.getContext('2d')
   ctx.scale(d, d)
-  const light = ctx.createRadialGradient(w * 0.58, h * 0.52, 0, w * 0.58, h * 0.52, w * 0.62)
-  light.addColorStop(0, '#484c40')
-  light.addColorStop(0.55, '#222722')
-  light.addColorStop(1, '#191d1b')
-  ctx.fillStyle = light
-  ctx.fillRect(0, 0, w, h)
-  ctx.strokeStyle = '#a5b5a513'
-  ctx.lineWidth = 0.7
-  for (let x = 0; x < w; x += 24) {
-    ctx.beginPath()
-    ctx.moveTo(x, 0)
-    ctx.lineTo(x, h)
-    ctx.stroke()
-  }
-  for (let y = 0; y < h; y += 24) {
-    ctx.beginPath()
-    ctx.moveTo(0, y)
-    ctx.lineTo(w, y)
-    ctx.stroke()
-  }
   // 沿螺旋带面分片绘制，由远及近遮挡，穴孔及画格随曲面一起变形。
-  const scale = Math.min(w / 540, h / 220)
+  const scale = Math.min(w / 640, h / 230)
   function point(t, s) {
     const x = 69 * t + 92 * Math.sin(t),
       z = 105 * Math.cos(t),
@@ -54,36 +34,18 @@ function paint() {
     ctx.fill()
   }
   const step = 0.032
-  const slices = Array.from({ length: 330 }, (_, i) => ({ t: -5 + i * step, i })).sort(
+  const slices = Array.from({ length: 310 }, (_, i) => ({ t: -4.95 + i * step, i })).sort(
     (a, b) => Math.cos(a.t) - Math.cos(b.t)
   )
   for (const { t, i } of slices) {
     const k = (Math.sin(t - 0.55) + 1) / 2,
-      m = Math.round(48 + 170 * k),
+      hue = 219 + 32 * Math.sin(t * 0.56),
+      light = 25 + 37 * k,
       u = t + step * 1.025
-    quad(t, u, -1, 1, 'rgb(' + [m, m + 5, Math.min(255, m + 1)].join(',') + ')')
-    quad(
-      t,
-      u,
-      -0.72,
-      0.72,
-      i % 21 < 2 ? '#3a4038' : 'hsl(78, ' + (12 + k * 14) + '%, ' + (16 + k * 37) + '%)'
-    )
-    for (const s of [-0.91, 0.78]) if (i % 5 < 3) quad(t, u, s, s + 0.13, '#252b23')
-    quad(t, u, -1, -0.975, '#c4c7b4')
-  }
-  ctx.strokeStyle = '#bac9a4'
-  for (const [x, y, dx, dy] of [
-    [18, 18, 1, 1],
-    [w - 18, 18, -1, 1],
-    [18, h - 18, 1, -1],
-    [w - 18, h - 18, -1, -1]
-  ]) {
-    ctx.beginPath()
-    ctx.moveTo(x + dx * 12, y)
-    ctx.lineTo(x, y)
-    ctx.lineTo(x, y + dy * 12)
-    ctx.stroke()
+    quad(t, u, -1, 1, `hsl(${hue} 55% ${light}%)`)
+    quad(t, u, -0.72, 0.72, i % 21 < 2 ? '#202842' : `hsl(${hue + 17} 63% ${light - 10}%)`)
+    for (const s of [-0.91, 0.78]) if (i % 5 < 3) quad(t, u, s, s + 0.13, '#1b2542')
+    quad(t, u, -1, -0.98, `hsl(${hue} 72% ${light + 20}%)`)
   }
 }
 onMounted(() => {
@@ -93,4 +55,4 @@ onMounted(() => {
 })
 onBeforeUnmount(() => observer?.disconnect())
 </script>
-<template><canvas ref="canvas" class="film-art" aria-label="银绿色螺旋胶片插画" /></template>
+<template><canvas ref="canvas" class="film-art" aria-hidden="true" /></template>

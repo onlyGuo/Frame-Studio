@@ -31,11 +31,11 @@ import AppearancePicker from './components/AppearancePicker.vue'
 import { version } from '../package.json'
 const pages = [
   ['overview', 'grid', '项目总览'],
-  ['story', 'pen', '剧本写作'],
-  ['cards', 'cards', '角色与设定'],
-  ['shots', 'shots', '分镜工作台'],
-  ['media', 'media', '素材库'],
-  ['edit', 'edit', '剪辑台']
+  ['story', 'pen', '剧本写作', 'violet'],
+  ['cards', 'cards', '角色与设定', 'amber'],
+  ['shots', 'shots', '分镜工作台', 'rose'],
+  ['media', 'media', '素材库', 'teal'],
+  ['edit', 'edit', '剪辑台', 'violet']
 ]
 const currentPage = computed(() => pages.find((p) => p[0] === ui.page))
 let offClose,
@@ -197,8 +197,15 @@ onBeforeUnmount(() => {
           </div>
         </template>
         <AppearancePicker />
-        <button class="assist-btn" :aria-pressed="ui.agent" @click="ui.agent = !ui.agent">
-          <Glyph name="spark" :size="16" />
+        <button
+          class="assist-btn"
+          data-tone="violet"
+          aria-controls="studio-assistant"
+          aria-keyshortcuts="Control+K Meta+K"
+          :aria-pressed="ui.agent"
+          @click="ui.agent = !ui.agent"
+        >
+          <Glyph name="spark" :size="17" />
           创作助手
           <i v-if="ui.agentRunning" class="run-light" aria-label="执行中" />
         </button>
@@ -220,6 +227,7 @@ onBeforeUnmount(() => {
           <button
             v-for="(p, i) in pages"
             :key="p[0]"
+            :data-tone="p[3]"
             :data-hint="p[2] + ' · Alt+' + (i + 1)"
             :aria-label="p[2]"
             :aria-current="ui.page === p[0] ? 'page' : undefined"
@@ -233,11 +241,17 @@ onBeforeUnmount(() => {
             v-if="doc && currentPage"
             data-hint="命令工作台"
             aria-label="命令工作台"
+            data-tone="teal"
             @click="ui.modal = 'command'"
           >
             <Glyph name="terminal" :size="19" />
           </button>
-          <button data-hint="Skill 管理" aria-label="Skill 管理" @click="ui.modal = 'skills'">
+          <button
+            data-hint="Skill 管理"
+            aria-label="Skill 管理"
+            data-tone="amber"
+            @click="ui.modal = 'skills'"
+          >
             <Glyph name="skill" :size="19" />
           </button>
           <button data-hint="模型配置" aria-label="模型配置" @click="ui.modal = 'settings'">
@@ -247,7 +261,7 @@ onBeforeUnmount(() => {
       </aside>
       <div class="main">
         <div class="project-strip">
-          <div class="workspace-tab">
+          <div :key="ui.page" class="workspace-tab" :data-tone="currentPage?.[3]">
             <Glyph :name="currentPage?.[1] || 'home'" :size="15" />
             {{ currentPage?.[2] || '项目工作台' }}
           </div>
@@ -267,7 +281,7 @@ onBeforeUnmount(() => {
             <Editor v-else-if="ui.page === 'edit'" />
             <Workspace v-else />
           </main>
-          <Assistant v-show="ui.agent" />
+          <Assistant v-show="ui.agent" id="studio-assistant" />
         </div>
       </div>
     </div>

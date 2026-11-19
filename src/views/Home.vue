@@ -1,6 +1,7 @@
 <script setup vapor>
 import { computed, ref } from 'vue'
 import Glyph from '../components/Glyph.vue'
+import FilmArt from '../components/FilmArt.vue'
 import { ui, openProject } from '../store.js'
 import '../studio.css'
 const query = ref('')
@@ -8,9 +9,9 @@ const projects = computed(() =>
   ui.recent.filter((p) => (p.title + ' ' + p.root).toLowerCase().includes(query.value.trim().toLowerCase()))
 )
 const groups = [
-  ['llm', '对话'],
-  ['image', '图像'],
-  ['video', '视频']
+  ['llm', '对话', 'chat', 'violet'],
+  ['image', '图像', 'media', 'teal'],
+  ['video', '视频', 'film', 'rose']
 ]
 const enabled = (type) =>
   Object.values(ui.config?.profiles || {}).filter((p) => p.group === type && p.configured).length
@@ -36,7 +37,10 @@ const enabled = (type) =>
     </header>
     <section class="production-panel home-library">
       <header>
-        <h2>最近项目 <small>{{ ui.recent.length }}</small></h2>
+        <h2>
+          最近项目
+          <small>{{ ui.recent.length }}</small>
+        </h2>
         <label v-if="ui.recent.length" class="project-search">
           <Glyph name="search" :size="15" />
           <input class="library-search" placeholder="查找项目" v-model="query" aria-label="查找项目" />
@@ -47,10 +51,17 @@ const enabled = (type) =>
         <span>画幅</span>
         <span>最后打开</span>
       </div>
-      <div v-if="!projects.length" class="project-empty">
-        <Glyph :name="query ? 'search' : 'folder'" :size="30" />
-        <h2>{{ query ? '未找到匹配的项目' : '开始一部短剧' }}</h2>
-        <p v-if="!query">新建项目，或打开已有的本地工程目录。</p>
+      <div v-if="!ui.recent.length" class="project-empty project-welcome">
+        <div class="project-welcome-copy">
+          <span class="project-welcome-icon" aria-hidden="true"><Glyph name="film" :size="23" /></span>
+          <h2>开始一部短剧</h2>
+          <p>新建项目，或打开已有的本地工程目录。</p>
+        </div>
+        <div class="project-welcome-art" aria-hidden="true"><FilmArt /></div>
+      </div>
+      <div v-else-if="!projects.length" class="project-empty">
+        <Glyph name="search" :size="30" />
+        <h2>未找到匹配的项目</h2>
       </div>
       <div v-else class="home-projects">
         <button v-for="p in projects" :key="p.root" @click="openProject('recent', { root: p.root })">
@@ -68,12 +79,14 @@ const enabled = (type) =>
     <section class="production-panel home-setup">
       <header><h2>工作室状态</h2></header>
       <div class="home-services">
-        <div v-for="[kind, label] in groups" :key="kind">
-          <i :class="{ configured: enabled(kind) > 0 }" />
+        <div v-for="[kind, label, icon, tone] in groups" :key="kind" :data-tone="tone">
+          <Glyph :name="icon" :size="15" />
           <span>{{ label }}</span>
-          <small>{{ enabled(kind) ? enabled(kind) + ' 项已配置' : '未配置' }}</small>
+          <small :class="{ configured: enabled(kind) > 0 }">
+            {{ enabled(kind) ? enabled(kind) + ' 项已配置' : '未配置' }}
+          </small>
         </div>
-        <div>
+        <div data-tone="amber">
           <Glyph name="skill" :size="15" />
           <span>Skill</span>
           <small>{{ ui.skills.filter((s) => s.enabled).length }} / {{ ui.skills.length }} 已启用</small>

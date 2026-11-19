@@ -198,13 +198,9 @@ label.inline,
 .ghost-dark:hover {
   background: #3c443e;
 }
-.soft,
-.assist-btn {
+.soft {
   background: var(--selected);
   color: var(--accent-text);
-}
-.assist-btn.on {
-  background: var(--selected);
 }
 .icon {
   width: 32px;
@@ -326,16 +322,24 @@ label.inline,
   color: var(--muted);
 }
 .toolbar .assist-btn {
-  color: var(--label);
-  background: transparent;
+  min-height: 30px;
+  gap: 7px;
+  padding-inline: 10px 12px;
+  font-weight: 650;
+  color: var(--tone);
+  border: 1px solid color-mix(in srgb, var(--tone) 29%, var(--line));
+  border-radius: 6px;
+  background: var(--tone-fill);
 }
-.toolbar .assist-btn:hover,
+.toolbar .assist-btn:hover {
+  background: color-mix(in srgb, var(--tone) 22%, var(--surface));
+}
 .toolbar .appearance-picker:hover {
   background: var(--hover);
 }
 .toolbar .assist-btn[aria-pressed='true'] {
-  color: var(--accent-text);
-  background: var(--selected);
+  border-color: color-mix(in srgb, var(--tone) 60%, var(--line));
+  background: color-mix(in srgb, var(--tone) 28%, var(--surface));
 }
 .workbench {
   display: flex;
@@ -370,15 +374,15 @@ label.inline,
   height: 34px;
   padding: 0;
   border-radius: 5px;
-  color: var(--muted);
+  color: var(--tone, var(--muted));
 }
 .nav-group button:hover {
-  background: var(--hover);
-  color: var(--ink);
+  background: var(--tone-fill, var(--hover));
+  color: var(--tone, var(--ink));
 }
 .nav-group button[aria-current='page'] {
-  background: var(--selected);
-  color: var(--accent-text);
+  background: var(--tone-fill, var(--selected));
+  color: var(--tone, var(--accent-text));
 }
 .nav-group button[aria-current='page']::before {
   content: '';
@@ -388,7 +392,7 @@ label.inline,
   bottom: 7px;
   width: 2px;
   border-radius: 2px;
-  background: var(--accent);
+  background: var(--tone, var(--accent));
 }
 .nav-group button::after {
   content: attr(data-hint);
@@ -438,14 +442,14 @@ label.inline,
   padding: 0 14px;
   margin-bottom: -1px;
   border-right: 1px solid var(--edge);
-  border-top: 2px solid var(--accent);
-  background: var(--paper);
+  border-top: 2px solid var(--tone, var(--accent));
+  background: linear-gradient(var(--tone-fill, var(--selected)), var(--paper) 88%);
   color: var(--label);
   font-size: 12px;
   font-weight: 600;
 }
 .workspace-tab svg {
-  color: var(--accent-text);
+  color: var(--tone, var(--accent-text));
 }
 .episode-picker {
   gap: 5px;
@@ -1006,7 +1010,7 @@ label.inline,
   color: var(--ink);
   background: var(--surface);
   border: 1px solid var(--edge);
-  border-radius: 7px;
+  border-radius: 9px;
   box-shadow: var(--shadow);
   overflow: hidden;
 }
@@ -1031,9 +1035,12 @@ label.inline,
   min-height: 39px;
   padding: 0 7px 0 12px;
   color: var(--muted);
-  background: var(--chrome);
+  background: linear-gradient(102deg, color-mix(in srgb, var(--violet) 10%, var(--chrome)), var(--chrome) 50%);
   border-bottom: 1px solid var(--edge);
   user-select: none;
+}
+.modal-titlebar > svg {
+  color: var(--violet);
 }
 .modal-titlebar h2 {
   margin: 0;
@@ -1217,6 +1224,43 @@ dialog.batch-dialog:not([open]) {
 .toast.error {
   border-color: var(--danger-bg);
   color: var(--danger);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .nav-group button > svg,
+  .toolbar .assist-btn > svg {
+    transition: translate 140ms ease-out, scale 140ms ease-out;
+  }
+  .nav-group button:hover > svg,
+  .toolbar .assist-btn:hover > svg {
+    translate: 0 -1px;
+  }
+  .nav-group button:active > svg,
+  .toolbar .assist-btn:active > svg {
+    scale: 0.91;
+    translate: 0;
+  }
+  .workspace-tab > svg,
+  .overlay,
+  .toast {
+    animation: studio-fade-in 160ms ease-out;
+  }
+  .overlay .modal,
+  dialog.modal[open],
+  .job > div {
+    animation: studio-window-in 180ms ease-out;
+  }
+}
+@keyframes studio-fade-in {
+  from {
+    opacity: 0.35;
+  }
+}
+@keyframes studio-window-in {
+  from {
+    opacity: 0.65;
+    translate: 0 6px;
+    scale: 0.985;
+  }
 }
 .toast .icon {
   width: 24px;

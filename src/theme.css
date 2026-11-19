@@ -18,6 +18,12 @@
   --accent-text: #204f9d;
   --accent-hover: #204d9e;
   --focus: #3675d6;
+  --violet: #6a4bb2;
+  --teal: #14766d;
+  --rose: #a74776;
+  --amber: #895924;
+  --film-glow: #8b78d7;
+  --film-light: #5d9fc5;
   --positive: #36714f;
   --positive-bg: #e3f2e8;
   --danger: #a34139;
@@ -47,6 +53,12 @@
   --accent-hover: #3770d7;
   --accent-text: #a7caff;
   --focus: #7caeff;
+  --violet: #c4a8ff;
+  --teal: #80d9c9;
+  --rose: #f2a7c9;
+  --amber: #ebc084;
+  --film-glow: #9064ef;
+  --film-light: #50a6d8;
   --positive: #92ccab;
   --positive-bg: #23362c;
   --danger: #f1ab9e;
@@ -57,6 +69,22 @@
   --chrome: #272b33;
   --scrim: #10131980;
   --shadow: 0 14px 42px #0005;
+}
+/* 同一制作阶段在导航、页签和状态区沿用对应的点缀色。 */
+[data-tone='violet'] {
+  --tone: var(--violet);
+}
+[data-tone='teal'] {
+  --tone: var(--teal);
+}
+[data-tone='rose'] {
+  --tone: var(--rose);
+}
+[data-tone='amber'] {
+  --tone: var(--amber);
+}
+[data-tone] {
+  --tone-fill: color-mix(in srgb, var(--tone, var(--accent-text)) 15%, var(--surface));
 }
 ::selection {
   background: var(--selected);

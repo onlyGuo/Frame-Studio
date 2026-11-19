@@ -83,6 +83,17 @@
   color: var(--muted);
   opacity: 0.65;
 }
+@media (prefers-reduced-motion: no-preference) {
+  .studio-select-arrow {
+    transition: rotate 140ms ease-out;
+  }
+  .studio-select[aria-expanded='true'] .studio-select-arrow {
+    rotate: 180deg;
+  }
+  .studio-select-menu:popover-open {
+    animation: studio-fade-in 125ms ease-out;
+  }
+}
 input[type='checkbox'] {
   appearance: none;
   display: inline-grid;
