@@ -1,0 +1,9 @@
+[
+  {
+    "rules": ["wan-prompt.md"],
+    "dialogueField": "visual",
+    "fields": {
+      "visual": "按当前万相型号和输入模式组织的一镜画面说明。对白占位符按要求保留。"
+    }
+  }
+]

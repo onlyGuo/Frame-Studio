@@ -1,0 +1,93 @@
+{
+  "name": "frameforge-studio",
+  "productName": "帧序 Frame Studio",
+  "version": "0.7.0",
+  "description": "本地 AI 短剧创作与剪辑工作台",
+  "author": "Frame Studio",
+  "private": true,
+  "type": "module",
+  "main": "desktop/main.mjs",
+  "scripts": {
+    "runtime": "node scripts/runtimes.mjs",
+    "dev": "npm run runtime && node scripts/dev.mjs",
+    "build": "vite build",
+    "start": "npm run runtime && npm run build && electron .",
+    "test": "node --test test/*.test.mjs",
+    "pack": "npm run runtime && npm run build && electron-builder --dir",
+    "dist": "npm run runtime && npm run build && electron-builder",
+    "test:desktop": "npm run build && node test/desktop.mjs",
+    "docs:screenshots": "npm run build && node scripts/screenshots.mjs"
+  },
+  "dependencies": {
+    "tar": "^7.5.0",
+    "undici": "7.30.2",
+    "yaml": "^2.8.3"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "6.0.11",
+    "electron": "43.2.0",
+    "electron-builder": "26.18.0",
+    "markdown-it": "^14.3.0",
+    "playwright-core": "^1.58.2",
+    "prettier": "^3.6.2",
+    "vite": "^8.0.0",
+    "vue": "3.6.0-rc.15"
+  },
+  "build": {
+    "appId": "studio.frameforge.desktop",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "desktop/**",
+      "shared/**",
+      "resources/prompts/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/skills",
+        "to": "skills",
+        "filter": [
+          "**/*",
+          "!minimax-video/h3-prompt-writing/**"
+        ]
+      },
+      {
+        "from": "build/icon.png",
+        "to": "studio-icon.png"
+      },
+      {
+        "from": "runtime/python",
+        "to": "python"
+      },
+      {
+        "from": "runtime/node",
+        "to": "node"
+      },
+      {
+        "from": "runtime/ffmpeg",
+        "to": "ffmpeg"
+      },
+      {
+        "from": "resources/licenses",
+        "to": "licenses"
+      }
+    ],
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.video"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "AudioVideo",
+      "maintainer": "Frame Studio"
+    },
+    "icon": "build/icon.png",
+    "artifactName": "Frame-Studio-${version}-${os}-${arch}.${ext}"
+  }
+}

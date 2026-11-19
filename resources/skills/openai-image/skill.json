@@ -1,0 +1,14 @@
+{
+  "id": "openai-image",
+  "name": "OpenAI Image",
+  "description": "OpenAI 兼容接口生成单张分镜图，支持 Base64 与 URL 返回。",
+  "provider": "openai-image",
+  "kind": "image",
+  "extension": ".png",
+  "command": {
+    "executable": "node",
+    "args": [
+      "{skill}/main.mjs"
+    ]
+  }
+}

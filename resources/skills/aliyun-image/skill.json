@@ -1,0 +1,14 @@
+{
+  "id": "aliyun-image",
+  "name": "阿里云 · 图像生成",
+  "description": "使用已配置的千问图像或万相模型，生成角色、场景与分镜素材。",
+  "provider": "aliyun-image",
+  "kind": "image",
+  "extension": ".png",
+  "command": {
+    "executable": "node",
+    "args": [
+      "{skill}/main.mjs"
+    ]
+  }
+}

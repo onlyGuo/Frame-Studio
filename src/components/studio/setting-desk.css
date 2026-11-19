@@ -1,0 +1,98 @@
+.setting-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 10px;
+  margin-bottom: 12px;
+}
+.setting-filters button {
+  padding: 6px 10px;
+  border-radius: 5px;
+  color: var(--muted);
+}
+.setting-filters button[aria-pressed='true'] {
+  color: var(--accent-text);
+  background: var(--selected);
+  font-weight: 650;
+}
+.setting-filters small {
+  font: 11px var(--mono);
+  color: inherit;
+}
+.setting-record.located,
+.setting-record:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: -1px;
+}
+.setting-uses {
+  font-size: 12px;
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+.setting-uses summary {
+  cursor: pointer;
+  width: fit-content;
+}
+.setting-uses > div {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+.setting-uses button,
+.episode-card-strip button {
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 4px 7px;
+}
+.setting-uses button:hover,
+.episode-card-strip button:hover {
+  color: var(--accent-text);
+  border-color: var(--accent-text);
+}
+.outfit-editor {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+.outfit-editor .actions {
+  flex-wrap: wrap;
+  align-items: end;
+}
+.outfit-editor small {
+  color: var(--muted);
+}
+.episode-card-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 8px 0 14px;
+}
+.episode-card-strip h2 {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--muted);
+  margin-right: 4px;
+}
+.episode-card-strip button {
+  font-size: 12px;
+  gap: 5px;
+  max-width: 190px;
+}
+.episode-card-strip strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.episode-card-strip img {
+  width: 22px;
+  height: 22px;
+  object-fit: cover;
+  border-radius: 3px;
+}

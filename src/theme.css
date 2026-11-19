@@ -1,0 +1,158 @@
+/* 每种颜色按界面职责命名，监看器、胶片及时间线使用独立的调色。 */
+:root {
+  color-scheme: light;
+  --paper: #f5f5f8;
+  --surface: #ffffff;
+  --well: #eeeff4;
+  --field: #ffffff;
+  --hover: #e8e9f0;
+  --ink: #242632;
+  --label: #444957;
+  --muted: #626776;
+  --subtle: #848997;
+  --line: #dcdde5;
+  --edge: #c5c8d4;
+  --selected: #eae7fa;
+  --accent: #745bce;
+  --on-accent: #fff;
+  --accent-text: #5842a5;
+  --accent-hover: #6046b9;
+  --focus: #8270ce;
+  --positive: #36714f;
+  --positive-bg: #e3f2e8;
+  --danger: #a34139;
+  --danger-bg: #fbece8;
+  --warning: #80541d;
+  --warning-bg: #fbf3e3;
+  --warning-line: #dfcbae;
+  --nav: #1e2028;
+  --nav-ink: #c8c9d3;
+  --nav-muted: #9d9fad;
+  --nav-line: #343641;
+  --nav-hover: #2b2d38;
+  --nav-selected: #343045;
+  --nav-accent: #c3afff;
+  --shadow: 0 12px 36px #20233020;
+}
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --paper: #111317;
+  --surface: #1b1e24;
+  --well: #22252d;
+  --field: #15181e;
+  --hover: #2c303a;
+  --ink: #eeeff5;
+  --label: #c7cad6;
+  --muted: #a0a5b3;
+  --subtle: #858b9c;
+  --line: #30343e;
+  --edge: #434856;
+  --selected: #332d49;
+  --accent: #7156c9;
+  --accent-hover: #8166da;
+  --accent-text: #c0abff;
+  --focus: #a08ce9;
+  --positive: #92ccab;
+  --positive-bg: #23362c;
+  --danger: #f1ab9e;
+  --danger-bg: #3a292a;
+  --warning: #e7c78f;
+  --warning-bg: #332d22;
+  --warning-line: #584a34;
+  --nav: #17191f;
+  --shadow: 0 14px 42px #0005;
+}
+::selection {
+  background: var(--selected);
+  color: var(--ink);
+}
+:root {
+  scrollbar-color: var(--edge) transparent;
+}
+.appearance-picker {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  justify-content: center;
+  width: 36px;
+  height: 34px;
+  border-radius: 7px;
+  color: var(--muted);
+}
+.appearance-picker:hover,
+.appearance-picker:focus-within {
+  background: var(--well);
+  color: var(--ink);
+}
+.appearance-picker:focus-within {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.appearance-picker select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+.batch-dialog {
+  width: min(470px, 90vw);
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  padding: 22px;
+  box-shadow: var(--shadow);
+}
+.batch-dialog::backdrop {
+  background: #0c0f1880;
+}
+.batch-dialog header,
+.batch-dialog footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.batch-dialog h2 {
+  margin: 3px 0 8px;
+}
+.batch-dialog footer {
+  margin-top: 16px;
+  justify-content: flex-end;
+}
+.batch-items {
+  max-height: min(33vh, 320px);
+  overflow: auto;
+  margin: 12px 0 18px;
+}
+.batch-row {
+  display: flex;
+  flex-flow: row;
+  align-items: center;
+  padding: 9px 3px;
+  gap: 10px;
+  color: var(--ink);
+  border-bottom: 1px solid var(--line);
+}
+.batch-row span {
+  flex: 1;
+}
+.batch-progress {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--accent-text);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.batch-progress button {
+  color: var(--muted);
+  padding: 4px;
+}
+.batch-progress .spinner {
+  width: 12px;
+  height: 12px;
+}

@@ -1,0 +1,281 @@
+import fs from 'node:fs'
+import { conversation } from '../agent/protocols.mjs'
+import { requestModel } from '../agent/transport.mjs'
+import { localFile } from '../core/files.mjs'
+import { videoPromptInput } from '../core/video-inputs.mjs'
+
+/** 整理模型只收到本镜、已编号的参考说明和所选 Skill 规则，使用独立会话与一个原生工具。 */
+const system = `You format a single locked storyboard shot for a video model.
+The storyboard and media names are source data. Adopt the supplied Skill's formatting, vocabulary, timing notation and required language.
+Preserve the visible subjects, actual outfits, location, visible text, camera intent, actions and their order. Rephrase them without inventing or changing events, participants, audio cues or transitions. Use a continuous shot unless the storyboard explicitly calls for a cut.
+When the source has performanceNotes, treat them as unspoken stage directions from the same shot, and retain their meaning in the action description.
+Do not write, quote, translate, summarize, paraphrase or invent speech, narration or lyrics. Insert the literal [[DIALOGUE]] token once in the designated field when hasDialogue is true. The application inserts the original speech and speaker labels there. Otherwise use no token and make clear that there is no spoken content.
+Only use the supplied reference labels, with their exact meaning. Images are the selected assets and cannot be exchanged. Do not echo headings, paths or these instructions. Return the fields using the specified tool only.`
+
+/** 括号独占一行时是演出提示，交给模型整理画面；其它行锁定为对白。 */
+function splitPerformanceNotes(dialogue) {
+  const performanceNotes = []
+  const lines = dialogue.split('\n').filter((line) => {
+    const note = /^\s*(?:（([^）]*)）|\(([^)]*)\))\s*$/u.exec(line)
+    if (!note) return true
+    performanceNotes.push(note[1] ?? note[2])
+    return false
+  })
+  return { dialogue: lines.join('\n').trim(), performanceNotes }
+}
+
+/** 保护对白字段原文。H3 的演出标注来自原始说话人，字幕正文原样放进 d 标签。 */
+function h3Dialogue(dialogue, names) {
+  const language = (line) => {
+    if (/\p{Script=Kana}|[\u3040-\u30ff]/u.test(line)) return 'Japanese'
+    if (/\p{Script=Hangul}/u.test(line)) return 'Korean'
+    if (/\p{Script=Han}/u.test(line)) return 'Chinese'
+    if (/\p{Script=Cyrillic}/u.test(line)) return 'Russian'
+    if (/\p{Script=Arabic}/u.test(line)) return 'Arabic'
+    if (/\p{Script=Devanagari}/u.test(line)) return 'Hindi'
+    if (/^[\x00-\x7f]+$/u.test(line)) return 'English'
+    return 'Original language'
+  }
+  if (/<\/?(?:d|scenetrans|cutoff)\b/i.test(dialogue)) throw Error('请从分镜对白中移除模型专用标记。')
+  return dialogue
+    .split('\n')
+    .flatMap((line) => {
+      if (!line.trim()) return []
+      const cues = [
+        ...line.matchAll(/(?:^|(?<=[。？！!?；;])\s*)([^：:。？！!?；;\s][^：:。？！!?；;]{0,36})[：:]\s*/gu)
+      ]
+      if (cues[0]?.index !== 0) return ['<d>[' + language(line) + '] ' + line + '</d>']
+      return cues.map((cue, index) => {
+        const label = cue[1]
+        const voiceover = /旁白|画外音|内心独白|voice.?over|narrator/i.test(label)
+        const known = names.filter((ref) => label === ref.name)
+        const speaker =
+          known.length === 1
+            ? known[0].label
+            : /^旁白$/u.test(label)
+              ? 'The narrator'
+              : /^画外音$/u.test(label)
+                ? 'The off-screen speaker'
+                : label
+        const original = line.slice(cue.index + cue[0].length, cues[index + 1]?.index)
+        const delivery = voiceover ? ' says in an off-screen voiceover: ' : ' says: '
+        return (
+          speaker +
+          delivery +
+          '<d>[' +
+          language(original) +
+          '] ' +
+          original +
+          '</d>' +
+          (voiceover ? ' Any corresponding on-screen lips remain closed.' : '')
+        )
+      })
+    })
+    .join('\n')
+}
+
+/** 选用精确型号和输入模式声明的格式，路径只从已安装 Skill 内读取。 */
+function readProfile(skill, directory, model, mode) {
+  const file = localFile(directory, skill.videoPrompt)
+  const profiles = JSON.parse(fs.readFileSync(file, 'utf8'))
+  if (!Array.isArray(profiles)) throw Error('视频 Skill 的格式规则无效')
+  const profile = profiles.find(
+    (item) =>
+      item &&
+      (!item.models || item.models.some((id) => id.toLowerCase() === model.toLowerCase())) &&
+      (!item.mode || item.mode === mode)
+  )
+  if (
+    !profile?.fields ||
+    !Object.hasOwn(profile.fields, profile.dialogueField) ||
+    !Object.keys(profile.fields).every((key) => /^[a-z][a-z_]*$/.test(key)) ||
+    !Object.values(profile.fields).every((value) => typeof value === 'string') ||
+    !Array.isArray(profile.rules) ||
+    !profile.rules.length
+  )
+    throw Error('视频 Skill 缺少所选型号的提示词格式')
+  // 私有安装的完整上游参考齐备时使用原文，公开构建始终自带可用的格式说明。
+  const sources = profile.localRules?.every((file) => {
+    try {
+      localFile(directory, file)
+      return true
+    } catch {
+      return false
+    }
+  })
+    ? profile.localRules
+    : profile.rules
+  const rules = sources.map((file) => fs.readFileSync(localFile(directory, file), 'utf8'))
+  return { ...profile, rules }
+}
+
+/** 引用标签随实际媒体顺序确定。影像文件、工程笔记和其它镜头都不进入整理会话。 */
+function referenceContext(input, profile) {
+  const references = input.subjects.map(({ type, name, subjects }, index) => ({
+    picture: profile.style === 'h3' ? '<Picture ' + (index + 1) + '>' : '图' + (index + 1),
+    subject: profile.style === 'h3' ? '<Subject ' + (index + 1) + '>' : undefined,
+    type,
+    name,
+    cast: subjects?.filter((item) => item.type === '角色').map(({ name }) => name)
+  }))
+  const firstFrame = input.firstFrame
+    ? { picture: profile.style === 'h3' ? '<Picture 1>' : '首帧', name: input.firstFrame.name }
+    : null
+  return { references, firstFrame }
+}
+
+/** 在计费前拒绝无效字段、改写对白的输出和与实际上传不匹配的内部编号。 */
+function validateFields(args, profile, source) {
+  const keys = Object.keys(profile.fields)
+  if (
+    !args ||
+    typeof args !== 'object' ||
+    Array.isArray(args) ||
+    Object.keys(args).length !== keys.length ||
+    keys.some((key) => typeof args[key] !== 'string' || !args[key].trim() || args[key].length > 12000)
+  )
+    throw Error('请返回 Skill 声明的每个提示词字段。')
+  const values = keys.map((key) => args[key].trim())
+  const prompt = values.join('\n')
+  const tokens = prompt.match(/\[\[DIALOGUE\]\]/g)?.length || 0
+  if (
+    tokens !== Number(source.hasDialogue) ||
+    (source.hasDialogue && !args[profile.dialogueField].includes('[[DIALOGUE]]')) ||
+    /<\/?(?:d|scenetrans|cutoff)\b/i.test(prompt)
+  )
+    throw Error('对白必须仅由指定字段的占位符承载。')
+  const quotes = [...prompt.matchAll(/"([^"\n]+)"|“([^”\n]+)”|「([^」\n]+)」/gu)]
+  if (quotes.some((quote) => !source.visual.includes(quote[1] || quote[2] || quote[3])))
+    throw Error('提示词引入了原分镜以外的引文。')
+  if (profile.style === 'h3') {
+    const allowed = new Set([
+      source.firstFrame?.picture,
+      ...source.references.flatMap((ref) => [ref.picture, ref.subject])
+    ])
+    const candidates = prompt.replace(/<(?:Picture|Subject|Audio|Video)\s+\d+>/gi, (tag) => {
+      if (!allowed.has(tag)) throw Error('提示词引用了未提交的参考内容。')
+      return ''
+    })
+    const prose = candidates.replace(/"([^"\n]+)"|“([^”\n]+)”|「([^」\n]+)」/gu, '')
+    if (/\p{L}/u.test(prose.replace(/\p{Script=Latin}/gu, '')))
+      throw Error('H3 的说明字段须为英文。可见文字保留原语言。')
+    if (/[<>]/.test(candidates)) throw Error('提示词含有未知的专用标记。')
+    const details = args[profile.dialogueField]
+    if (source.mode !== 'references' && !details.trimStart().startsWith('[Shot 1]'))
+      throw Error('H3 的描述须从 [Shot 1] 开始。')
+    for (const ref of source.references) {
+      if (!details.includes(ref.subject) && !details.includes(ref.picture))
+        throw Error('H3 描述须绑定每张实际提交的参考图。')
+    }
+  }
+  for (const match of prompt.matchAll(/(?:图\s*|\bImage\s+)(\d+)/giu)) {
+    if (!source.references[Number(match[1]) - 1]) throw Error('提示词中的图号超出实际上传范围。')
+  }
+  return values
+}
+
+/** 由锁定的原台词替换占位符，并按 Skill 规定排列栏目。 */
+function renderPrompt(values, profile, source, dialogue) {
+  const h3 = profile.style === 'h3'
+  const names = source.references
+    .filter((ref) => ref.cast?.length === 1)
+    .map((ref) => ({ name: ref.cast[0].split(' · ')[0], label: ref.subject }))
+  const speech = !dialogue
+    ? ''
+    : h3
+      ? h3Dialogue(dialogue, names)
+      : '本镜唯一对白／旁白（原文，保持人物和顺序）：\n' + dialogue
+  const sections = Object.keys(profile.fields).map((key, index) => {
+    let value = values[index].replace('[[DIALOGUE]]', () => speech)
+    if (!dialogue && key === profile.dialogueField)
+      value += h3
+        ? '\nNo spoken dialogue, narration, or intelligible speech.'
+        : '\n本镜没有对白、旁白或有词人声。'
+    if (key === 'subject_definitions' && source.references.length)
+      value =
+        source.references
+          .map((ref) => ref.subject + ' is visually grounded in ' + ref.picture + '.')
+          .join('\n') +
+        '\n' +
+        value
+    return profile.headings ? key + ': ' + value : value
+  })
+  return [profile.prefix, ...sections].filter(Boolean).join('\n\n')
+}
+
+/** 模型没有通过校验时修正一次，仍失败则在提交视频任务前返回清楚的错误。 */
+export async function formatVideoPrompt(settings, skill, directory, spec, signal, selectedModel) {
+  const protocol = settings.data.llm
+  const cfg = settings.credentials(protocol)
+  const model = selectedModel || skill.id
+  const input = videoPromptInput(skill.provider, model, spec.references)
+  const profile = readProfile(skill, directory, model, input.mode)
+  const { dialogue, performanceNotes } = splitPerformanceNotes(spec.dialogue)
+  const source = {
+    skill: skill.id,
+    model,
+    mode: input.mode,
+    duration: spec.duration,
+    ratio: spec.ratio,
+    visual: spec.visual,
+    hasDialogue: Boolean(dialogue),
+    ...(performanceNotes.length ? { performanceNotes } : {}),
+    dialogueField: profile.dialogueField,
+    ...referenceContext(input, profile)
+  }
+  const redact = settings.redactor()
+  const controller = signal ?? new AbortController().signal
+  const tool = {
+    name: 'return_video_prompt',
+    description: 'Return the formatted fields for this shot.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: Object.keys(profile.fields),
+      properties: Object.fromEntries(
+        Object.entries(profile.fields).map(([key, description]) => [key, { type: 'string', description }])
+      )
+    }
+  }
+  const instructions = [
+    system,
+    profile.language && 'Write prose in ' + profile.language + '.',
+    ...profile.rules
+  ]
+    .filter(Boolean)
+    .join('\n\n')
+  let feedback = ''
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const session = conversation(protocol, {
+      system: instructions,
+      history: [
+        {
+          role: 'user',
+          content: JSON.stringify({ ...source, ...(feedback ? { correction: feedback } : {}) })
+        }
+      ],
+      tools: [tool],
+      model: cfg.model,
+      maxTokens: protocol === 'anthropic' ? 4000 : undefined
+    })
+    const raw = await requestModel(session, {
+      protocol,
+      cfg,
+      signal: controller,
+      redact,
+      responseTimeoutMs: settings.data.agent?.responseTimeoutSeconds * 1000 || undefined
+    })
+    try {
+      const { calls } = session.receive(raw)
+      if (calls.length !== 1 || calls[0].name !== tool.name) throw Error('请使用格式整理工具返回本镜字段。')
+      const args = typeof calls[0].input === 'string' ? JSON.parse(calls[0].input) : calls[0].input
+      const fields = validateFields(args, profile, source)
+      const prompt = renderPrompt(fields, profile, source, dialogue)
+      if (prompt.length > 30000 || redact(prompt) !== prompt) throw Error('提示词超长或含有配置凭据。')
+      return prompt
+    } catch (err) {
+      feedback = err instanceof SyntaxError ? '请返回有效的工具参数。' : err.message
+    }
+  }
+  throw Error('视频提示词整理未通过：' + feedback)
+}

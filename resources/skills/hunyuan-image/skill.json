@@ -1,0 +1,14 @@
+{
+  "id": "hunyuan-image",
+  "name": "混元 · 图像",
+  "description": "通过腾讯混元生成图像，支持横屏、竖屏和方形画幅。",
+  "provider": "hunyuan-image",
+  "kind": "image",
+  "extension": ".png",
+  "command": {
+    "executable": "node",
+    "args": [
+      "{skill}/main.mjs"
+    ]
+  }
+}

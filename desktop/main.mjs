@@ -1,0 +1,375 @@
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  protocol,
+  safeStorage,
+  shell,
+  Menu,
+  nativeTheme
+} from 'electron'
+import path from 'node:path'
+import os from 'node:os'
+import fs from 'node:fs'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { Commands } from './services/commands.mjs'
+import { ffmpegPath } from './services/media.mjs'
+import { Project } from './services/projects.mjs'
+import { Skills } from './services/skills.mjs'
+import { Settings } from './services/settings.mjs'
+import { BackgroundAgent } from './agent/background.mjs'
+import { VideoBatch } from './services/video-batch.mjs'
+import { reconcile } from '../shared/reconcile.mjs'
+import { renderEpisode, probe } from './services/media.mjs'
+import { mediaResponse } from './core/protocol.mjs'
+import { runWorkCommand } from './services/work-command.mjs'
+import { requestCaptions, receiveCaptions } from './core/caption-request.mjs'
+import { mediaKinds } from '../shared/model.mjs'
+const base = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
+const dev =
+  !app.isPackaged && /^http:\/\/127\.0\.0\.1:\d+\/$/.test(process.env.STUDIO_DEV_URL || '')
+    ? process.env.STUDIO_DEV_URL
+    : null
+const entry = dev || pathToFileURL(path.join(base, 'dist/index.html')).href
+const root = (!app.isPackaged && process.env.STUDIO_TEST_HOME) || path.join(os.homedir(), '.ai-video-studio')
+let win,
+  settings,
+  skills,
+  commands,
+  active,
+  task,
+  closing = false
+const agent = new BackgroundAgent((event) => {
+  if (win && !win.isDestroyed()) win.webContents.send('studio:agent-event', event)
+})
+const batch = new VideoBatch((task, state) => {
+  if (win && !win.isDestroyed()) win.webContents.send('studio:batch', { task, state })
+})
+app.setPath('userData', path.join(root, 'desktop'))
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'studio-media',
+    privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true }
+  }
+])
+if (!app.requestSingleInstanceLock()) app.quit()
+else {
+  app.on('second-instance', () => {
+    if (win?.isMinimized()) win.restore()
+    win?.focus()
+  })
+  app
+    .whenReady()
+    .then(() => {
+      settings = new Settings(root, {
+        seal(value) {
+          if (!safeStorage.isEncryptionAvailable()) throw Error('请先解锁系统密钥存储')
+          return safeStorage.encryptString(value).toString('base64')
+        },
+        open: (value) => safeStorage.decryptString(Buffer.from(value, 'base64'))
+      })
+      nativeTheme.themeSource = settings.data.appearance
+      nativeTheme.on('updated', () => {
+        if (win && !win.isDestroyed()) {
+          win.setBackgroundColor(windowColor())
+          win.webContents.send('studio:appearance', nativeTheme.shouldUseDarkColors)
+        }
+      })
+      const resource = app.isPackaged ? process.resourcesPath : path.join(base, 'resources')
+      const pythonRoot = app.isPackaged ? path.join(resource, 'python') : path.join(base, 'runtime/python')
+      const nodeRoot = app.isPackaged ? path.join(resource, 'node') : path.join(base, 'runtime/node')
+      commands = new Commands({
+        node: path.join(nodeRoot, process.platform === 'win32' ? 'node.exe' : 'node'),
+        python: path.join(pythonRoot, process.platform === 'win32' ? 'python.exe' : 'bin/python3'),
+        ffmpeg: ffmpegPath
+      })
+      skills = new Skills(settings, path.join(resource, 'skills'), commands)
+      // 跨工程查看后台结果时，沿用该任务的只读素材会话。
+      protocol.handle('studio-media', (req) =>
+        mediaResponse(new URL(req.url).hostname === active?.session ? active : agent.project, req)
+      )
+      register()
+      createWindow()
+      app.on('activate', () => {
+        if (!BrowserWindow.getAllWindows().length) createWindow()
+      })
+      app.on('window-all-closed', () => {
+        if (process.platform !== 'darwin') app.quit()
+      })
+    })
+    .catch((err) => {
+      dialog.showErrorBox('工作室启动失败', err.message)
+      app.quit()
+    })
+}
+/** 窗口与网页用相同的底色，加载工程时保持连贯。 */
+function windowColor() {
+  return nativeTheme.shouldUseDarkColors ? '#111317' : '#f5f5f8'
+}
+/** 创建隔离渲染窗口并协调关闭前保存。 */
+function createWindow() {
+  closing = false
+  win = new BrowserWindow({
+    width: 1440,
+    height: 940,
+    minWidth: 1020,
+    minHeight: 660,
+    icon: app.isPackaged
+      ? path.join(process.resourcesPath, 'studio-icon.png')
+      : path.join(base, 'build/icon.png'),
+    backgroundColor: windowColor(),
+    show: false,
+    webPreferences: {
+      preload: path.join(base, 'desktop/preload.cjs'),
+      contextIsolation: true,
+      sandbox: true,
+      nodeIntegration: false
+    }
+  })
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  win.webContents.on('will-navigate', (event, url) => {
+    if (url !== entry) event.preventDefault()
+  })
+  win.once('ready-to-show', () => win.show())
+  win.on('close', (event) => {
+    if (!closing && !win.webContents.isCrashed()) {
+      event.preventDefault()
+      win.webContents.send('studio:close')
+    }
+  })
+  win.on('closed', () => {
+    win = null
+    active = null
+    task?.abort()
+    batch.cancel(batch.current?.id)
+    agent.cancel(agent.current?.id)
+  })
+  const menu = [{ role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' }]
+  if (process.platform === 'darwin') menu.unshift({ role: 'appMenu' })
+  Menu.setApplicationMenu(Menu.buildFromTemplate(menu))
+  win.loadURL(entry)
+}
+/** 使用系统原生选择器取得用户选择的目录。 */
+async function directory(title) {
+  const r = await dialog.showOpenDialog(win, { title, properties: ['openDirectory', 'createDirectory'] })
+  return r.canceled ? null : r.filePaths[0]
+}
+/** 建立当前工程会话，并更新最近列表。 */
+function selectProject(project) {
+  const working = [agent.controller && agent.project, batch.project].find((p) => p?.root === project.root)
+  active = working || project
+  settings.remember(project.root, project.data)
+  return active.snapshot()
+}
+/** 核验 IPC 的目标仍是当前工程。 */
+function projectFor(session) {
+  if (!active || active.session !== session) throw Error('请重新打开工作区')
+  return active
+}
+/** 对话可从当前工程或仍显示在全局面板中的任务工程读取。 */
+function transcriptProject(session) {
+  if (agent.project && agent.project.session === session) return agent.project
+  return projectFor(session)
+}
+/** 长任务共享取消信号且互斥执行。 */
+async function job(run) {
+  if (task) throw Error('请等待当前任务完成')
+  task = new AbortController()
+  try {
+    return await run(task.signal)
+  } finally {
+    task = null
+  }
+}
+/** 让预览排版器生成字幕，再调用统一的成片编码器。 */
+async function exportFilm(project, episodeId, signal, progress) {
+  return renderEpisode(
+    project,
+    episodeId,
+    (ratio, quality, clips) => requestCaptions(win, ratio, quality, clips, signal),
+    signal,
+    progress
+  )
+}
+/** 所有文件选择、项目切换与密钥解密集中在主进程。 */
+function register() {
+  const routes = {
+    initial: () => ({
+      recent: settings.data.recent,
+      config: settings.view(),
+      darkMode: nativeTheme.shouldUseDarkColors,
+      skills: skills.list(),
+      current: active?.snapshot(),
+      agentTask: agent.snapshot(),
+      videoBatch: batch.current
+    }),
+    create: async (p) => {
+      const dir = await directory('选择新工程的父目录')
+      return dir && selectProject(Project.create(dir, p.title, p.ratio))
+    },
+    open: async () => {
+      const dir = await directory('打开包含 studio.json 的工程目录')
+      return dir && selectProject(Project.open(dir))
+    },
+    recent: (p) => {
+      if (!settings.data.recent.some((r) => r.root === p.root)) throw Error('最近工程不存在')
+      return selectProject(Project.open(p.root))
+    },
+    closeProject: () => {
+      active = null
+      return settings.data.recent
+    },
+    save: (p) => {
+      const project = projectFor(p.session)
+      const oldTitle = project.data.title,
+        oldRatio = project.data.ratio
+      const updated =
+        p.base && p.base.revision !== project.data.revision ? reconcile(p.base, p.data, project.data) : p.data
+      project.save({ ...updated, revision: p.base ? project.data.revision : p.data.revision })
+      if (oldTitle !== project.data.title || oldRatio !== project.data.ratio)
+        settings.remember(project.root, project.data)
+      return project.snapshot()
+    },
+    archive: async (p) => {
+      const project = projectFor(p.session)
+      const r = await dialog.showSaveDialog(win, {
+        defaultPath: 'Frame-Studio.framepack',
+        filters: [{ name: '帧序工程', extensions: ['framepack'] }]
+      })
+      if (!r.canceled) {
+        await project.archive(r.filePath)
+        return r.filePath
+      }
+    },
+    restore: async () => {
+      const r = await dialog.showOpenDialog(win, {
+        properties: ['openFile'],
+        filters: [{ name: '帧序工程', extensions: ['framepack'] }]
+      })
+      if (r.canceled) return
+      const parent = await directory('选择导入工程的父目录')
+      return parent && selectProject(await Project.restore(r.filePaths[0], parent))
+    },
+    addMedia: async (p) => {
+      const project = projectFor(p.session)
+      const imagesOnly = p.kind === 'image'
+      const extensions = Object.entries(mediaKinds)
+        .filter(([, kind]) => !imagesOnly || kind === 'image')
+        .map(([ext]) => ext.slice(1))
+      const r = await dialog.showOpenDialog(win, {
+        title: imagesOnly ? '选择设定参考图' : '导入媒体',
+        properties: imagesOnly ? ['openFile'] : ['openFile', 'multiSelections'],
+        filters: [{ name: imagesOnly ? '图片' : '媒体素材', extensions }]
+      })
+      if (r.canceled) return
+      const added = await project.addMedia(r.filePaths, probe)
+      return { ...project.snapshot(), importedIds: added.map((a) => a.id) }
+    },
+    recoverImage: async (p) => {
+      const project = projectFor(p.session)
+      const asset = project.data.assets.find((a) => a.id === p.id && a.kind === 'image')
+      if (!asset) throw Error('请选择要找回的工程图片')
+      const extensions = ['.jpg', '.jpeg'].includes(asset.ext) ? ['jpg', 'jpeg'] : [asset.ext.slice(1)]
+      const selected = await dialog.showOpenDialog(win, {
+        title: '找回「' + asset.name + '」的原图',
+        properties: ['openFile'],
+        filters: [{ name: '原图格式', extensions }]
+      })
+      if (selected.canceled) return false
+      await project.recoverImage(asset.id, selected.filePaths[0])
+      return project.snapshot()
+    },
+    settings: (p) => settings.update(p),
+    agentPreferences: (p) => settings.setAgentPreferences(p),
+    appearance: (p) => {
+      nativeTheme.themeSource = settings.setAppearance(p.mode)
+      return { mode: nativeTheme.themeSource, dark: nativeTheme.shouldUseDarkColors }
+    },
+    agentHistory: (p) => transcriptProject(p.session).agentHistory(),
+    agentTrace: (p) => transcriptProject(p.session).agentTrace(p.id),
+    skills: () => skills.list(),
+    installSkill: async () => {
+      const dir = await directory('选择可信 Skill 的目录')
+      if (dir) skills.install(dir)
+      return skills.list()
+    },
+    manageSkill: (p) => {
+      skills.manage(p.id, p.action)
+      return skills.list()
+    },
+    runSkill: (p) =>
+      job(async (signal) => {
+        const project = projectFor(p.session)
+        const { assets, ...binding } = await skills.generate(project, p.id, p, signal)
+        return { state: project.snapshot(), assetId: assets[0].id, ...binding }
+      }),
+    command: (p) =>
+      job(async (signal) => {
+        const result = await runWorkCommand(
+          projectFor(p.session),
+          settings,
+          commands,
+          {
+            ...p.command,
+            provider: p.provider,
+            extension: p.extension,
+            episodeId: p.episodeId,
+            destination: p.destination,
+            shotId: p.shotId,
+            prompt: p.prompt,
+            assetFree: p.assetFree
+          },
+          signal
+        )
+        return { code: result.code, state: result.state, asset: result.asset, binding: result.binding }
+      }),
+    captionResult: receiveCaptions,
+    agent: (p) => {
+      const project = projectFor(p.session)
+      return agent.start(
+        {
+          settings,
+          project,
+          skills,
+          episodeId: p.episodeId,
+          command: (spec, signal, scope) => runWorkCommand(project, settings, commands, spec, signal, scope),
+          exportEpisode: async (id, signal) => path.basename(await exportFilm(project, id, signal, () => {}))
+        },
+        p.question
+      )
+    },
+    cancelAgent: (p) => agent.cancel(p.id),
+    startVideoBatch: (p) => batch.start(projectFor(p.session), skills, p),
+    cancelVideoBatch: (p) => batch.cancel(p.id),
+    agentApproval: (p) => agent.answer(p.taskId, p.id, p.allowed),
+    render: (p) =>
+      job((signal) =>
+        exportFilm(projectFor(p.session), p.episodeId, signal, (label) =>
+          win?.webContents.send('studio:progress', label)
+        )
+      ),
+    reveal: (p) => {
+      const project = projectFor(p.session)
+      const file = p.file
+      if (file && path.dirname(file) === path.join(project.root, 'exports') && fs.existsSync(file))
+        shell.showItemInFolder(file)
+      else return shell.openPath(project.root)
+    },
+    cancel: () => task?.abort(),
+    closeReady: () => {
+      closing = true
+      win.close()
+    }
+  }
+  for (const [method, fn] of Object.entries(routes))
+    ipcMain.handle('studio:' + method, (e, p) => {
+      if (
+        e.sender !== win?.webContents ||
+        e.senderFrame !== win.webContents.mainFrame ||
+        (dev ? new URL(e.senderFrame.url).origin !== new URL(dev).origin : e.senderFrame.url !== entry)
+      )
+        throw Error('未知窗口')
+      return fn(p)
+    })
+}

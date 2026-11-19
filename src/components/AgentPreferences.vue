@@ -1,0 +1,54 @@
+<script setup vapor>
+import { ref } from 'vue'
+import { ui, api, notify, perform } from '../store.js'
+import { agentLimits, maxResponseRetries } from '../../shared/agent-settings.mjs'
+
+const contextThreshold = ref(ui.config.agent.contextThreshold)
+const responseTimeoutSeconds = ref(ui.config.agent.responseTimeoutSeconds)
+
+/** 单独保存运行参数，不要求重新填写模型地址或凭据。 */
+function save() {
+  return perform('正在保存助手设置', async () => {
+    ui.config = await api.agentPreferences({
+      contextThreshold: Number(contextThreshold.value),
+      responseTimeoutSeconds: Number(responseTimeoutSeconds.value)
+    })
+    notify('助手运行设置已保存')
+  })
+}
+</script>
+<template>
+  <form class="form-stack" @submit.prevent="save">
+    <label>
+      自动压缩阈值（tokens）
+      <input
+        v-model="contextThreshold"
+        type="number"
+        :min="agentLimits.minTokens"
+        step="1"
+        required
+        aria-describedby="agent-context-help"
+      />
+    </label>
+    <p id="agent-context-help" class="hint">
+      上下文达到阈值时，当前语言模型会总结较早的对话和工具记录。请为模型的上下文窗口预留回复空间。
+    </p>
+    <label>
+      模型首次响应超时（秒）
+      <input
+        v-model="responseTimeoutSeconds"
+        type="number"
+        min="1"
+        :max="agentLimits.maxResponseSeconds"
+        step="1"
+        required
+        aria-describedby="agent-response-help"
+      />
+    </label>
+    <p id="agent-response-help" class="hint">
+      仅在等待 HTTP 响应头时计时。无响应超时后最多重试
+      {{ maxResponseRetries }} 次。收到响应头后，即使暂时没有新文字，也会持续等待。可随时停止。
+    </p>
+    <div class="modal-actions"><button class="primary">保存助手设置</button></div>
+  </form>
+</template>

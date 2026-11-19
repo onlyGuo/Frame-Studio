@@ -1,0 +1,166 @@
+.shot-asset-review {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+}
+.asset-review-heading,
+.asset-review-heading strong,
+.asset-review-row,
+.asset-review-repair {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.asset-review-heading {
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.asset-review-heading strong {
+  font-size: 13px;
+}
+.asset-review-heading > span {
+  font-size: 11px;
+  font-weight: 600;
+}
+.asset-review-pass {
+  color: var(--positive);
+}
+.asset-review-pending {
+  color: var(--warning);
+}
+.asset-review-list,
+.asset-review-issues {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.asset-review-list {
+  display: grid;
+  gap: 6px;
+}
+.asset-review-row {
+  flex-wrap: wrap;
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+}
+.asset-review-row img,
+.asset-review-empty-thumb {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 4px;
+}
+.asset-review-row img {
+  object-fit: cover;
+}
+.asset-review-empty-thumb {
+  display: grid;
+  place-items: center;
+  background: var(--well);
+  color: var(--muted);
+}
+.asset-review-name {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 1px;
+  overflow-wrap: anywhere;
+}
+.asset-review-name small {
+  font-size: 10px;
+  color: var(--muted);
+}
+.asset-review-name strong {
+  font-size: 12px;
+}
+.asset-review-repair {
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  padding-left: 42px;
+}
+.asset-review-repair select {
+  flex: 1 1 160px;
+  min-width: 0;
+  width: auto;
+  font-size: 12px;
+}
+.shot-asset-review .text-btn {
+  padding: 3px;
+  color: var(--accent-text);
+  font-size: 12px;
+  flex: none;
+}
+.shot-asset-review p,
+.asset-review-issues {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.asset-review-issues {
+  padding: 7px 9px;
+  border-radius: 4px;
+  color: var(--warning);
+  background: var(--warning-bg);
+}
+.shot-asset-review .asset-review-confirm {
+  display: flex;
+  align-items: center;
+  flex-flow: row wrap;
+  gap: 8px;
+  color: var(--label);
+  cursor: pointer;
+  font-size: 12px;
+}
+.asset-review-confirm input[type='checkbox'] {
+  margin: 0;
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+.batch-entry {
+  border-bottom: 1px solid var(--line);
+  padding: 4px 0 8px;
+}
+.batch-entry .batch-row {
+  border-bottom: 0;
+  padding-bottom: 4px;
+}
+.batch-asset-note {
+  display: grid;
+  gap: 4px;
+  margin-left: 30px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.batch-issue {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  color: var(--warning);
+}
+.batch-issue .text-btn {
+  flex: none;
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--accent-text);
+}
+.asset-adopt {
+  justify-self: start;
+  color: var(--accent-text);
+}
+.video-new-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+}
+.video-new-card label {
+  flex: 1 1 110px;
+  min-width: 0;
+}

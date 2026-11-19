@@ -1,0 +1,15 @@
+{
+  "id": "aliyun-video",
+  "name": "通义万相 · 视频",
+  "description": "使用已配置的万相模型，根据分镜文字、首帧或多张设定图生成视频。",
+  "provider": "aliyun-video",
+  "kind": "video",
+  "extension": ".mp4",
+  "command": {
+    "executable": "node",
+    "args": [
+      "{skill}/main.mjs"
+    ]
+  },
+  "videoPrompt": "video-prompt.json"
+}

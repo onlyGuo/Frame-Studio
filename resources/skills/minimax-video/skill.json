@@ -1,0 +1,17 @@
+{
+  "id": "minimax-video",
+  "name": "MiniMax H3 / 海螺视频",
+  "description": "按所选型号整理分镜并执行 MiniMax H3 或海螺视频生成。",
+  "provider": "minimax-video",
+  "kind": "video",
+  "extension": ".mp4",
+  "command": {
+    "executable": "python",
+    "args": [
+      "-I",
+      "-B",
+      "{skill}/main.py"
+    ]
+  },
+  "videoPrompt": "video-prompt.json"
+}
