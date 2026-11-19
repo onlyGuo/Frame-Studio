@@ -5,4 +5,6 @@ import './style.css'
 document.documentElement.dataset.theme = window.matchMedia('(prefers-color-scheme: dark)').matches
   ? 'dark'
   : 'light'
+// 仅在桌面窗口提供系统材质时透出工作区外壳，编辑内容仍使用不透明底色。
+document.documentElement.toggleAttribute('data-window-material', !!window.studio?.nativeWindowMaterial)
 createVaporApp(App).mount('#app')

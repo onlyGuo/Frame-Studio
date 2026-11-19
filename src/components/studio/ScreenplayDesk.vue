@@ -104,10 +104,7 @@ watch(
 </script>
 <template>
   <header class="studio-page-title">
-    <div>
-      <div class="studio-breadcrumb">{{ doc.title }}</div>
-      <h1>剧本写作</h1>
-    </div>
+    <h1>剧本写作</h1>
     <button class="primary" @click="$emit('addEpisode')">
       <Glyph name="plus" />
       添加分集

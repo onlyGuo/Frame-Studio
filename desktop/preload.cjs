@@ -35,6 +35,7 @@ const methods = [
 const api = Object.fromEntries(
   methods.map((method) => [method, (payload) => ipcRenderer.invoke('studio:' + method, payload)])
 )
+api.nativeWindowMaterial = process.platform === 'darwin'
 for (const [method, channel] of [
   ['onProgress', 'studio:progress'],
   ['onVideoBatch', 'studio:batch'],

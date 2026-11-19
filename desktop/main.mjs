@@ -29,6 +29,7 @@ import { mediaKinds } from '../shared/model.mjs'
 import { prepareMediaTarget, commitMediaTarget } from '../shared/shot-media.mjs'
 import { configHome } from './core/config-home.mjs'
 const base = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
+const isMac = process.platform === 'darwin'
 const dev =
   !app.isPackaged && /^http:\/\/127\.0\.0\.1:\d+\/$/.test(process.env.STUDIO_DEV_URL || '')
     ? process.env.STUDIO_DEV_URL
@@ -78,8 +79,10 @@ else if (!app.requestSingleInstanceLock()) {
       nativeTheme.themeSource = settings.data.appearance
       nativeTheme.on('updated', () => {
         if (win && !win.isDestroyed()) {
-          win.setBackgroundColor(windowColor())
-          if (process.platform !== 'darwin') win.setTitleBarOverlay(titleBarColors())
+          if (!isMac) {
+            win.setBackgroundColor(windowColor())
+            win.setTitleBarOverlay(titleBarColors())
+          }
           win.webContents.send('studio:appearance', nativeTheme.shouldUseDarkColors)
         }
       })
@@ -140,13 +143,15 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     titleBarStyle: 'hidden',
-    titleBarOverlay: { height: 47, ...(process.platform === 'darwin' ? {} : titleBarColors()) },
-    ...(process.platform === 'darwin' ? { trafficLightPosition: { x: 14, y: 17 } } : {}),
+    titleBarOverlay: { height: 43, ...(isMac ? {} : titleBarColors()) },
+    ...(isMac
+      ? { vibrancy: 'sidebar', visualEffectState: 'followWindow', trafficLightPosition: { x: 14, y: 15 } }
+      : {}),
     autoHideMenuBar: true,
     icon: app.isPackaged
       ? path.join(process.resourcesPath, 'studio-icon.png')
       : path.join(base, 'build/icon.png'),
-    backgroundColor: windowColor(),
+    backgroundColor: isMac ? '#00000000' : windowColor(),
     show: false,
     webPreferences: {
       preload: path.join(base, 'desktop/preload.cjs'),

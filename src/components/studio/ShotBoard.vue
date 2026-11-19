@@ -119,10 +119,7 @@ const referenceOptions = computed(() => {
 </script>
 <template>
   <header class="studio-page-title">
-    <div>
-      <div class="studio-breadcrumb">{{ episode.title }}</div>
-      <h1>分镜工作台</h1>
-    </div>
+    <h1>分镜工作台</h1>
     <div class="actions">
       <EpisodeVideoBatch />
       <button class="primary" @click="add">

@@ -139,10 +139,7 @@ function referenceOptions(card) {
 <template>
   <section ref="pane" class="setting-desk">
     <header class="studio-page-title">
-      <div>
-        <div class="studio-breadcrumb">{{ doc.title }}</div>
-        <h1>角色与设定</h1>
-      </div>
+      <h1>角色与设定</h1>
       <button type="button" class="primary" @click="createCard">
         <Glyph name="plus" />
         {{ filter === '全部' ? '新建设定卡' : '新建' + filter }}

@@ -21,12 +21,6 @@
   font-size: 20px;
   letter-spacing: -0.01em;
 }
-.studio-breadcrumb {
-  font-size: 12px;
-  color: var(--muted);
-  line-height: 1.8;
-  overflow-wrap: anywhere;
-}
 .production-slate {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -894,6 +888,16 @@
 .home-library {
   min-height: 210px;
 }
+.studio-home :is(.home-library, .home-setup) {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.studio-home :is(.home-library, .home-setup) > header {
+  min-height: 38px;
+  padding-inline: 0;
+  background: transparent;
+}
 .project-search {
   display: flex;
   flex-direction: row;
@@ -995,6 +999,9 @@
   gap: 0;
   min-height: 216px;
   padding: 0;
+  margin-top: 8px;
+  border-radius: 9px;
+  overflow: hidden;
   text-align: left;
   background: linear-gradient(105deg, var(--surface) 32%, color-mix(in srgb, var(--film-glow) 10%, var(--surface)));
 }
@@ -1052,12 +1059,9 @@
   grid-template-columns: 15px 1fr;
   align-items: center;
   gap: 4px 6px;
-  padding: 11px 12px;
+  padding: 11px 12px 11px 0;
   color: var(--label);
   font-size: 12px;
-}
-.home-services > div + div {
-  border-left: 1px solid var(--line);
 }
 .home-services svg {
   color: var(--tone, var(--muted));

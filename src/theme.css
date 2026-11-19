@@ -2,6 +2,7 @@
 :root {
   color-scheme: light;
   --paper: #f4f5f7;
+  --workspace: #fafbfc;
   --surface: #ffffff;
   --well: #eaedf1;
   --field: #ffffff;
@@ -38,6 +39,7 @@
 :root[data-theme='dark'] {
   color-scheme: dark;
   --paper: #1c1f25;
+  --workspace: #1c1f25;
   --surface: #23272e;
   --well: #292e37;
   --field: #1c2027;

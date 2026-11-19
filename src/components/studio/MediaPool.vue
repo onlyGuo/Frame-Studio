@@ -180,10 +180,7 @@ function openRef(link) {
 </script>
 <template>
   <header class="studio-page-title">
-    <div>
-      <div class="studio-breadcrumb">{{ doc.title }}</div>
-      <h1>素材库</h1>
-    </div>
+    <h1>素材库</h1>
     <div class="actions">
       <button class="outline" @click="generate()">
         <Glyph name="spark" />

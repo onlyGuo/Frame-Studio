@@ -256,10 +256,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', key))
 <template>
   <div class="page studio-work cut-room">
     <header class="studio-page-title">
-      <div>
-        <div class="studio-breadcrumb">{{ episode.title }}</div>
-        <h1>剪辑台</h1>
-      </div>
+      <h1>剪辑台</h1>
       <div class="actions">
         <button
           class="outline"

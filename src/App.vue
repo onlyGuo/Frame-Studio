@@ -152,6 +152,10 @@ onBeforeUnmount(() => {
         <div v-if="doc && currentPage" class="window-project">
           <Glyph name="folder" :size="15" />
           <b :title="ui.root">{{ doc.title }}</b>
+          <span class="window-section" :data-tone="currentPage[3]">
+            <Glyph name="chevron" :size="11" />
+            {{ currentPage[2] }}
+          </span>
         </div>
       </div>
       <div class="actions">
@@ -260,12 +264,8 @@ onBeforeUnmount(() => {
         </nav>
       </aside>
       <div class="main">
-        <div class="project-strip">
-          <div :key="ui.page" class="workspace-tab" :data-tone="currentPage?.[3]">
-            <Glyph :name="currentPage?.[1] || 'home'" :size="15" />
-            {{ currentPage?.[2] || '项目工作台' }}
-          </div>
-          <label v-if="doc && currentPage" class="inline episode-picker">
+        <div v-if="doc && currentPage" class="project-strip">
+          <label class="inline episode-picker">
             当前分集
             <StudioSelect
               aria-label="当前分集"
