@@ -7,7 +7,7 @@ import { validateCommand, providerEnvironment } from './commands.mjs'
 import { readJson, localDir, localFile } from '../core/files.mjs'
 import { mediaKinds, uid } from '../../shared/model.mjs'
 import { profiles } from './settings.mjs'
-import { probe } from './media.mjs'
+import { probe, probeVoiceSample } from './media.mjs'
 import { prepareMediaTarget, commitMediaTarget, videoTargetChanged } from '../../shared/shot-media.mjs'
 import { withMediaTarget } from './media-targets.mjs'
 import { resolveMentions } from '../../shared/mentions.mjs'
@@ -19,6 +19,7 @@ import { isMiniMaxH3, videoDurations, videoPromptInput } from '../core/video-inp
 const roleReferencePrompt = fs
   .readFileSync(new URL('../../resources/prompts/role-reference.md', import.meta.url), 'utf8')
   .trim()
+const h3PromptFile = 'video-prompt.json'
 
 /** 校验声明与入口。自定义 Skill 是由用户安装的受信任本地程序。 */
 function describe(dir) {
@@ -95,9 +96,21 @@ function generationInput(project, target, input, skill, model) {
   const generation =
     skill.kind === 'video'
       ? prepareVideoInput(project, target, input, { ...skill, model, custom: !skill.builtin })
-      : imageInput(project, shot, card, target, input)
+      : skill.provider === 'minimax-speech'
+        ? speechInput(card, input)
+        : imageInput(project, shot, card, target, input)
   if (generation.prompt.length > 30000) throw Error('生成提示词（含控制说明）超过 30000 字')
   return { ratio: doc.ratio, duration, ...generation }
+}
+
+/** 样音请求只发送此角色的音色描述和独立试听文本。 */
+function speechInput(card, input) {
+  const prompt = (input.prompt?.trim() || card?.notes?.trim() || '').slice(0, 1000)
+  const sampleText = input.sampleText?.trim() || '我在这儿等你，慢慢走，别着急。'
+  const voiceId = input.voiceId?.trim() || ''
+  if (!prompt && !voiceId) throw Error('请描述需要的声音，或输入 MiniMax 音色 ID')
+  if (sampleText.length > 500 || voiceId.length > 256) throw Error('试听台词或音色 ID 过长')
+  return { prompt, sampleText, voiceId }
 }
 
 /** 角色参考图是一套服饰的五视图设定页；分镜底图只使用其画面和实际引用。 */
@@ -147,6 +160,7 @@ export class Skills {
           return {
             ...item,
             builtin: root === this.builtin,
+            ...(root === this.builtin && item.id === 'vllm-h3' ? { videoPrompt: h3PromptFile } : {}),
             enabled: !this.settings.data.disabled.includes(item.id)
           }
         })
@@ -235,7 +249,8 @@ export class Skills {
   /** 批量生成在首个镜头付费前检查整份待制作清单，执行时仍按实时工程复核。 */
   preflightVideo(project, selected, input) {
     const target = prepareMediaTarget(project.data, 'video', input)
-    return prepareVideoInput(project, target, input, { ...selected, custom: !selected.builtin }).references
+    const spec = prepareVideoInput(project, target, input, { ...selected, custom: !selected.builtin })
+    return [...spec.references, ...(spec.audioReferences || [])]
   }
   /** 在独占目标上执行命令并返回已提交的绑定回执。 */
   async runTarget(project, s, input, target, signal) {
@@ -243,10 +258,13 @@ export class Skills {
     const env = providerEnvironment(this.settings, s.provider)
     const spec = generationInput(project, target, input, s, env.STUDIO_MODEL)
     const skillDir = path.join(s.builtin ? this.builtin : this.custom, id)
-    if (s.kind === 'video') await verifyVideoFiles(spec.references, signal)
+    if (s.kind === 'video')
+      await verifyVideoFiles([...spec.references, ...(spec.audioReferences || [])], signal)
     if (s.kind === 'video' && s.videoPrompt) {
       try {
-        spec.prompt = await this.formatVideo(this.settings, s, skillDir, spec, signal, env.STUDIO_MODEL)
+        const promptDir =
+          s.provider === 'vllm-h3' && s.builtin ? path.join(this.builtin, 'minimax-video') : skillDir
+        spec.prompt = await this.formatVideo(this.settings, s, promptDir, spec, signal, env.STUDIO_MODEL)
       } catch (error) {
         signal?.throwIfAborted()
         throw Error('整理视频提示词失败：' + this.settings.redactor()(error.message))
@@ -259,8 +277,13 @@ export class Skills {
       const expand = (value) => value.replaceAll('{skill}', skillDir).replaceAll('{output}', output)
       const command = { executable: expand(s.command.executable), args: s.command.args.map(expand) }
       const { visual, dialogue, ...payload } = spec
-      if (s.provider === 'minimax-video' && isMiniMaxH3(env.STUDIO_MODEL))
-        payload.inputMode = videoPromptInput(s.provider, env.STUDIO_MODEL, spec.references).mode
+      if (s.provider === 'vllm-h3' || (s.provider === 'minimax-video' && isMiniMaxH3(env.STUDIO_MODEL)))
+        payload.inputMode = videoPromptInput(
+          s.provider,
+          env.STUDIO_MODEL,
+          spec.references,
+          spec.audioReferences
+        ).mode
       payload.output = output
       if (videoTargetChanged(project.data, target))
         throw Error('分镜或出场资产刚刚更改，请核对最新版本再生成。')
@@ -278,7 +301,7 @@ export class Skills {
       let binding
       const assets = await project.addMedia(
         [localFile(dir, path.basename(output))],
-        probe,
+        s.kind === 'audio' && target.cardId ? (file) => probeVoiceSample(file, signal) : probe,
         (
           project.data.episodes
             .find((e) => e.id === target.episodeId)
@@ -314,6 +337,7 @@ function failureReason(dir, output, builtin, code) {
         return '参考图的格式、文件大小、分辨率或长宽比超出所选模型的限制'
       if (info.reason === 'reference_upload')
         return '万相 2.6 R2V 要求已上传的公网或 OSS 素材，请选用支持本地图片的 2.7 R2V 或 3.0'
+      if (info.reason === 'voice_upload') return '无法上传角色样音到百炼临时存储，请核对模型和地域配置'
       if (info.reason === 'duration') return '请输入所选视频模型支持的整数秒数'
       if (info.reason === 'http' && Number.isInteger(info.status) && info.status >= 300 && info.status <= 599)
         return stage + '返回 HTTP ' + info.status

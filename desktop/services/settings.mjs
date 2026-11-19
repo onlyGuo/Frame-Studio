@@ -17,6 +17,8 @@ export const profiles = {
   ],
   'hunyuan-image': ['腾讯混元', 'image', 'https://hunyuan.tencentcloudapi.com', 'hunyuan-image'],
   'minimax-video': ['MiniMax H3 / 海螺', 'video', 'https://api.minimaxi.com/v1', 'MiniMax-Hailuo-2.3'],
+  'vllm-h3': ['自定义 MiniMax H3（vLLM-Omni）', 'video', 'http://127.0.0.1:8091/v1', 'MiniMaxAI/MiniMax-H3'],
+  'minimax-speech': ['MiniMax Speech', 'audio', 'https://api.minimax.cn/v1', 'speech-2.8-hd'],
   'aliyun-video': ['阿里云 · 万相视频', 'video', 'https://dashscope.aliyuncs.com/api/v1', 'wan2.6-t2v']
 }
 /** 维护设备级服务配置、凭据与最近项目。 */
@@ -31,8 +33,9 @@ export class Settings {
       : { version: 1, llm: 'chat', profiles: {}, recent: [], disabled: [] }
     for (const [id, [, , url, model]] of Object.entries(profiles))
       this.data.profiles[id] ??= { url, model, key: '', secretId: '', region: 'ap-guangzhou' }
+    this.data.profiles['vllm-h3'].steps ??= 10
     this.data.mediaDefaults ??= {}
-    this.data.appearance ??= 'system'
+    this.data.appearance ??= 'dark'
     this.data.agent = agentPreferences(this.data.agent)
     this.save()
   }
@@ -55,7 +58,12 @@ export class Settings {
   /** 仅根据本机配置判断服务能否使用，发现能力无需解密凭据。 */
   ready(id) {
     const cfg = this.data.profiles[id]
-    return Boolean(cfg?.url && cfg.model && cfg.key && (id !== 'hunyuan-image' || cfg.secretId?.trim()))
+    return Boolean(
+      cfg?.url &&
+        cfg.model &&
+        (id === 'vllm-h3' ? cfg.saved : cfg.key) &&
+        (id !== 'hunyuan-image' || cfg.secretId?.trim())
+    )
   }
   /** 旧版单服务配置自动生效。存在多个候选时尊重用户显式选择。 */
   defaultMedia(kind) {
@@ -70,7 +78,11 @@ export class Settings {
       llm: this.data.llm,
       appearance: this.data.appearance,
       agent: { ...this.data.agent },
-      mediaDefaults: { image: this.defaultMedia('image'), video: this.defaultMedia('video') },
+      mediaDefaults: {
+        image: this.defaultMedia('image'),
+        video: this.defaultMedia('video'),
+        audio: this.defaultMedia('audio')
+      },
       profiles: Object.fromEntries(
         Object.entries(profiles).map(([id, [label, group]]) => {
           const { key, ...fields } = this.data.profiles[id]
@@ -80,7 +92,7 @@ export class Settings {
     }
   }
   /** 更新单个协议；省略密钥时保留原有凭据。 */
-  update({ id, url, model, key, secretId = '', region = 'ap-guangzhou', active }) {
+  update({ id, url, model, key, secretId = '', region = 'ap-guangzhou', active, steps }) {
     if (!Object.hasOwn(profiles, id) || !model?.trim()) throw Error('请选择协议并填写模型')
     const endpoint = new URL(url)
     if (
@@ -92,6 +104,9 @@ export class Settings {
     )
       throw Error('请填写 HTTP(S) API 基础地址')
     const old = this.data.profiles[id]
+    const inferenceSteps = steps ?? old.steps ?? 10
+    if (id === 'vllm-h3' && (!Number.isSafeInteger(inferenceSteps) || inferenceSteps < 1))
+      throw Error('推理步数须为正整数')
     const kind = profiles[id][1]
     const previous = kind === 'llm' ? null : this.defaultMedia(kind)
     this.data.profiles[id] = {
@@ -99,6 +114,7 @@ export class Settings {
       model: model.trim(),
       region,
       secretId,
+      ...(id === 'vllm-h3' ? { steps: inferenceSteps, saved: true } : {}),
       key: key === undefined ? old.key : key ? this.vault.seal(key) : ''
     }
     if (active && profiles[id][1] === 'llm') this.data.llm = id
@@ -115,7 +131,7 @@ export class Settings {
   credentials(id) {
     const cfg = this.data.profiles[id]
     if (!this.ready(id)) throw Error('请先在模型设置中补全' + (profiles[id]?.[0] || '服务') + '的凭据')
-    return { ...cfg, key: this.vault.open(cfg.key) }
+    return { ...cfg, key: cfg.key ? this.vault.open(cfg.key) : '' }
   }
   /** 工具结果或用户资料中意外出现的已配置凭据也在出站时遮蔽。 */
   redactor() {

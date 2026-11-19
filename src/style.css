@@ -171,7 +171,7 @@ label.inline,
 }
 .primary {
   background: var(--accent);
-  color: white;
+  color: var(--on-accent);
 }
 .primary:hover {
   background: var(--accent-hover);
@@ -413,8 +413,7 @@ label.inline,
   overflow: auto;
 }
 .page {
-  max-width: 1520px;
-  margin: auto;
+  min-width: 0;
   padding: 32px clamp(25px, 3.2vw, 56px) 48px;
 }
 .hero {
@@ -1105,9 +1104,6 @@ label.inline,
   .body.assistant-open .cut-layout {
     grid-template-columns: 1fr;
   }
-  .body.assistant-open .record {
-    flex-direction: column;
-  }
   .body.assistant-open .hero-copy {
     width: 58%;
   }
@@ -1180,3 +1176,27 @@ label.inline,
 .compact-nav .nav-group+.nav-group{padding-top:10px;border-top:1px solid var(--nav-line)}
 .compact-nav .local{font-size:0;justify-content:center;gap:0}
 @media(max-width:1160px){.shell:not(.compact-nav) .sidebar{width:154px}.project-status{gap:7px}}
+
+/* 左侧窗口按钮位于导航上方，收起导航时也为它们留出空间。 */
+.sidebar,
+.compact-nav .sidebar {
+  padding-top: max(22px, min(env(titlebar-area-x, 0px), calc(env(titlebar-area-height, 0px) + 4px)));
+}
+.compact-nav .sidebar {
+  min-width: env(titlebar-area-x, 0px);
+}
+/* 工具栏空白区和品牌标识可拖动窗口，按钮及下拉选择仍接收鼠标事件。 */
+.toolbar,
+.brand {
+  app-region: drag;
+  user-select: none;
+}
+.toolbar {
+  padding-right: calc(19px + max(0px, 100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)));
+}
+.toolbar button,
+.toolbar .actions,
+.shell[inert] .toolbar,
+.shell[inert] .brand {
+  app-region: no-drag;
+}

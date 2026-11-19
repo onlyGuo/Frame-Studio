@@ -5,9 +5,10 @@ import {
   applyUnavailableImages,
   inspectShotAssets,
   linkNamedCard,
-  shotReferenceImages
+  shotReferenceImages,
+  shotVoiceReferences
 } from '../../shared/shot-assets.mjs'
-import { validateVideoInputs } from '../../resources/skills/_lib/video-inputs.mjs'
+import { supportsReferenceAudio, validateVideoInputs } from '../../resources/skills/_lib/video-inputs.mjs'
 
 const offline = computed(() => new Set(ui.offlineImageIds))
 /** 绑定选择器只列出本工程中可用的图片。 */
@@ -36,7 +37,9 @@ export function videoModelIssue(doc, shot, report, skill, config) {
   }
   if (!skill.provider) return ''
   try {
-    validateVideoInputs(skill.provider, config.profiles[skill.provider]?.model, refs)
+    const model = config.profiles[skill.provider]?.model
+    const audio = supportsReferenceAudio(skill.provider, model) ? shotVoiceReferences(doc, shot) : []
+    validateVideoInputs(skill.provider, model, refs, audio)
     return ''
   } catch (error) {
     return error.message

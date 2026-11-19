@@ -105,7 +105,7 @@ function append() {
   const s = shot.value,
     a = asset(s.assetId)
   if (!a) return
-  if (editEpisode((e) => e.clips.push(clipFromShot(s, a))))
+  if (editEpisode((e) => e.clips.push(clipFromShot(s, a, doc.value.cards))))
     notify('已加入「' + episode.value.title + '」时间线')
 }
 </script>
@@ -227,7 +227,11 @@ function append() {
         />
         <label>
           对白 / 字幕
-          <textarea :value="shot.dialogue" @change="patch(shot.id, 'dialogue', $event.target.value)" />
+          <textarea
+            :value="shot.dialogue"
+            placeholder="角色名：台词。每位说话人另起一行，以便引用角色样音。"
+            @change="patch(shot.id, 'dialogue', $event.target.value)"
+          />
         </label>
         <ShotAssetReview
           :report="assetReport"

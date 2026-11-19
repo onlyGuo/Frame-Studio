@@ -6,7 +6,7 @@ import { mediaKinds } from '../../shared/model.mjs'
 import { withMediaTarget } from './media-targets.mjs'
 import { prepareMediaTarget, commitMediaTarget, videoTargetChanged } from '../../shared/shot-media.mjs'
 import { providerEnvironment } from './commands.mjs'
-import { probe } from './media.mjs'
+import { probe, probeVoiceSample } from './media.mjs'
 import { profiles } from './settings.mjs'
 import { prepareVideoInput, verifyVideoFiles } from './shot-assets.mjs'
 import { applyScriptEdits, readScriptEdits, writeScriptSnapshot, writeWorkScript } from './command-script.mjs'
@@ -28,12 +28,13 @@ async function execute(project, settings, commands, spec, signal, target, scope)
   const env = providerEnvironment(settings, spec.provider)
   const base = project.data
   if (mediaKinds[spec.extension] === 'video') {
-    const { prompt, references } = prepareVideoInput(project, target, spec, {
+    const { prompt, references, audioReferences } = prepareVideoInput(project, target, spec, {
       provider: profiles[spec.provider]?.[1] === 'video' ? spec.provider : undefined,
       model: env.STUDIO_MODEL
     })
-    await verifyVideoFiles(references, signal)
+    await verifyVideoFiles([...references, ...(audioReferences || [])], signal)
     env.STUDIO_REFERENCES = JSON.stringify(references)
+    if (audioReferences?.length) env.STUDIO_AUDIO_REFERENCES = JSON.stringify(audioReferences)
     env.STUDIO_VIDEO_PROMPT = prompt
   }
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'frame-command-'))
@@ -67,7 +68,7 @@ async function execute(project, settings, commands, spec, signal, target, scope)
     if (spec.extension) {
       const [asset] = await project.addMedia(
         [localFile(temp, 'result' + spec.extension)],
-        probe,
+        target.kind === 'audio' && target.cardId ? (file) => probeVoiceSample(file, signal) : probe,
         '命令生成素材',
         (draft, [item]) => {
           if (actions.length) Object.assign(draft, applyScriptEdits(base, draft, actions))

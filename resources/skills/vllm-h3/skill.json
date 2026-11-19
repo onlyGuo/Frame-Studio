@@ -1,0 +1,9 @@
+{
+  "id": "vllm-h3",
+  "name": "自定义 MiniMax H3（vLLM-Omni）",
+  "description": "使用自部署 H3 生成有声分镜，可携带角色参考图和声音样本。",
+  "provider": "vllm-h3",
+  "kind": "video",
+  "extension": ".mp4",
+  "command": { "executable": "node", "args": ["{skill}/main.mjs"] }
+}

@@ -6,9 +6,9 @@ import Glyph from './Glyph.vue'
 const modes = [
   { id: 'system', title: '跟随系统', icon: 'display' },
   { id: 'light', title: '浅色', icon: 'sun' },
-  { id: 'dark', title: '深色', icon: 'moon' }
+  { id: 'dark', title: '暗色', icon: 'moon' }
 ]
-const current = computed(() => modes.find((m) => m.id === ui.config?.appearance) || modes[0])
+const current = computed(() => modes.find((m) => m.id === ui.config?.appearance) || modes[2])
 /** 应用外观交由 Electron 切换，系统窗口和网页会同时响应。 */
 async function choose(event) {
   try {
@@ -22,8 +22,9 @@ async function choose(event) {
 }
 </script>
 <template>
-  <label class="appearance-picker" :title="'外观 · ' + current.title">
+  <label class="appearance-picker">
     <Glyph :name="current.icon" :size="17" />
+    <span>外观</span>
     <select aria-label="外观模式" :value="current.id" :disabled="!ui.config" @change="choose">
       <option v-for="mode in modes" :key="mode.id" :value="mode.id">{{ mode.title }}</option>
     </select>

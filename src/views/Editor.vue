@@ -200,7 +200,7 @@ function remove() {
 /** 将本集已经成片的分镜补入主画面轨道，原有手工剪辑继续保留。 */
 function assemble() {
   stop()
-  const cut = roughCut(episode.value, doc.value.assets)
+  const cut = roughCut(episode.value, doc.value.assets, doc.value.cards)
   if (cut.added || cut.linked)
     if (
       !editEpisode((e) => {

@@ -1,0 +1,9 @@
+{
+  "id": "minimax-speech",
+  "name": "MiniMax 角色样音",
+  "description": "设计原创角色音色，或指定音色 ID 合成试听并绑定角色卡。",
+  "provider": "minimax-speech",
+  "kind": "audio",
+  "extension": ".mp3",
+  "command": { "executable": "node", "args": ["{skill}/main.mjs"] }
+}

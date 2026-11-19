@@ -49,7 +49,7 @@
   --edge: #434856;
   --selected: #332d49;
   --accent: #7156c9;
-  --accent-hover: #8166da;
+  --accent-hover: #795ed1;
   --accent-text: #c0abff;
   --focus: #a08ce9;
   --positive: #92ccab;
@@ -70,32 +70,26 @@
   scrollbar-color: var(--edge) transparent;
 }
 .appearance-picker {
-  position: relative;
   display: inline-flex;
+  flex-direction: row;
   align-items: center;
   flex: none;
-  justify-content: center;
-  width: 36px;
-  height: 34px;
-  border-radius: 7px;
-  color: var(--muted);
-}
-.appearance-picker:hover,
-.appearance-picker:focus-within {
-  background: var(--well);
-  color: var(--ink);
-}
-.appearance-picker:focus-within {
-  outline: 2px solid var(--focus);
-  outline-offset: 1px;
+  gap: 6px;
+  white-space: nowrap;
 }
 .appearance-picker select {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0;
+  width: auto;
+  min-height: 34px;
+  padding: 4px 7px;
   cursor: pointer;
+}
+.appearance-picker select:hover:not(:disabled) {
+  background: var(--hover);
+}
+@media (max-width: 1000px) {
+  .appearance-picker > svg {
+    display: none;
+  }
 }
 .batch-dialog {
   width: min(470px, 90vw);

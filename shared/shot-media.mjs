@@ -1,5 +1,5 @@
-import { makeShot } from './model.mjs'
-import { setShotAssetFree } from './shot-assets.mjs'
+import { makeShot, validateVoiceSample } from './model.mjs'
+import { setShotAssetFree, shotVoiceReferences } from './shot-assets.mjs'
 import { mentionToken, parseMentions } from './mentions.mjs'
 import { bindSettingImage, roleOutfit, settingImage } from './outfits.mjs'
 
@@ -50,7 +50,8 @@ function videoInputs(doc, shot) {
     shot.duration,
     shot.assetFreeFor,
     shot.referenceId || boundId(shot, 'image', doc.assets),
-    settings
+    settings,
+    shotVoiceReferences(doc, shot)
   ])
 }
 
@@ -71,6 +72,10 @@ export function prepareMediaTarget(doc, kind, input) {
     throw Error('请选择唯一的生成目标')
   if (cardId) {
     const card = doc.cards.find((c) => c.id === cardId)
+    if (kind === 'audio') {
+      if (card?.type !== '角色' || outfitId) throw Error('请选择声音样本所属的角色卡')
+      return { cardId, expected: card.voiceAssetId || '', kind }
+    }
     if (!card || kind !== 'image') throw Error('请选择现有设定卡并生成图像')
     const outfit = roleOutfit(card, outfitId)
     if (outfitId && !outfit) throw Error('目标服饰不存在，请重新选择')
@@ -113,10 +118,18 @@ export function commitMediaTarget(doc, asset, target) {
   if (target.library) return {}
   if (target.cardId) {
     const card = doc.cards.find((c) => c.id === target.cardId)
-    const outfit = roleOutfit(card, target.outfitId)
-    if (card && (!target.outfitId || outfit) && settingImage(card, target.outfitId) === target.expected) {
-      bindSettingImage(card, asset.id, target.outfitId)
-      return { cardId: card.id, ...(target.outfitId ? { outfitId: target.outfitId } : {}) }
+    if (target.kind === 'audio') {
+      validateVoiceSample(asset)
+      if (card?.type === '角色' && (card.voiceAssetId || '') === target.expected) {
+        card.voiceAssetId = asset.id
+        return { cardId: card.id }
+      }
+    } else {
+      const outfit = roleOutfit(card, target.outfitId)
+      if (card && (!target.outfitId || outfit) && settingImage(card, target.outfitId) === target.expected) {
+        bindSettingImage(card, asset.id, target.outfitId)
+        return { cardId: card.id, ...(target.outfitId ? { outfitId: target.outfitId } : {}) }
+      }
     }
   } else {
     const ep = doc.episodes.find((e) => e.id === target.episodeId)

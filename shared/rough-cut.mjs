@@ -1,13 +1,29 @@
 import { makeClip } from './model.mjs'
+import { mentionToken, parseMentions } from './mentions.mjs'
+
+/** 字幕显示角色名，保留无法解析的旧引用供创作者修订。 */
+function captionText(dialogue, cards) {
+  return parseMentions(dialogue)
+    .map((part) =>
+      part.type === 'text'
+        ? part.text
+        : (cards.find((card) => card.id === part.id)?.name ?? mentionToken(part.id, part.outfitId))
+    )
+    .join('')
+}
 
 /** 从镜头建立可独立调整的画面片段，实际取用时长受素材和镜头设计的共同约束。 */
-export function clipFromShot(shot, asset) {
+export function clipFromShot(shot, asset, cards = []) {
+  return clipWithCaption(shot, asset, captionText(shot.dialogue, cards))
+}
+
+function clipWithCaption(shot, asset, caption) {
   const duration = Math.min(asset.duration || shot.duration, shot.duration)
-  return { ...makeClip(asset.id, duration), sourceShotId: shot.id, caption: shot.dialogue.slice(0, 500) }
+  return { ...makeClip(asset.id, duration), sourceShotId: shot.id, caption: caption.slice(0, 500) }
 }
 
 /** 只补齐未剪成镜。以镜头来源定位已有片段，旧工程每条无来源片段最多匹配一个镜头。 */
-export function roughCut(episode, assets) {
+export function roughCut(episode, assets, cards = []) {
   const index = new Map(assets.map((a) => [a.id, a]))
   const ready = episode.shots.filter((s) => {
     const a = index.get(s.assetId)
@@ -60,8 +76,9 @@ export function roughCut(episode, assets) {
           ? previous + 1
           : clips.length
     if (!insert.has(at)) insert.set(at, [])
-    insert.get(at).push(clipFromShot(s, index.get(s.assetId)))
-    if (s.dialogue.length > 500) subtitlesShortened++
+    const caption = captionText(s.dialogue, cards)
+    insert.get(at).push(clipWithCaption(s, index.get(s.assetId), caption))
+    if (caption.length > 500) subtitlesShortened++
     added++
   }
   const merged = []

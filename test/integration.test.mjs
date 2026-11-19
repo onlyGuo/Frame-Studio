@@ -13,7 +13,7 @@ import { Skills } from '../desktop/services/skills.mjs'
 import { modelFixture } from './model-fixture.mjs'
 import { runWorkCommand } from '../desktop/services/work-command.mjs'
 import { runAgent } from '../desktop/services/agent.mjs'
-import { makeClip, makeAudio } from '../shared/model.mjs'
+import { makeCard, makeClip, makeAudio } from '../shared/model.mjs'
 import { ffmpegPath, probe, renderEpisode } from '../desktop/services/media.mjs'
 import { mediaResponse } from '../desktop/core/protocol.mjs'
 const scratch = await fs.mkdtemp(path.join(os.tmpdir(), 'frame-test-'))
@@ -55,6 +55,9 @@ before(async () => {
     path.join(scratch, 'blue.mp4')
   ])
   encode(['-f', 'lavfi', '-i', 'sine=frequency=220', '-t', '1', path.join(scratch, 'tone.wav')])
+  const sample = path.join(scratch, 'voice.mp3')
+  encode(['-f', 'lavfi', '-i', 'sine=frequency=220', '-t', '4', sample])
+  const voice = (await fs.readFile(sample)).toString('hex')
   png = await fs.readFile(path.join(scratch, 'red.png'))
   mp4 = await fs.readFile(path.join(scratch, 'blue.mp4'))
   host = http.createServer(async (req, res) => {
@@ -68,6 +71,11 @@ before(async () => {
     }
     if (raw === '/file.png' || raw === '/file.mp4') return res.end(raw.endsWith('png') ? png : mp4)
     if (raw === '/api/images/generations') return reply({ data: [{ b64_json: png.toString('base64') }] })
+    if (raw === '/api/voice_design') return reply({ trial_audio: voice, voice_id: 'test-voice' })
+    if (raw === '/api/t2a_v2') return reply({ data: { audio: voice } })
+    if (raw === '/api/v1/videos') return reply({ id: 'local-job' })
+    if (raw === '/api/v1/videos/local-job') return reply({ status: 'completed' })
+    if (raw === '/api/v1/videos/local-job/content') return res.end(mp4)
     if (raw.includes('/services/aigc'))
       return reply({ output: { task_id: raw.includes('video') ? 'video' : 'image' } })
     if (raw.includes('/tasks/'))
@@ -101,8 +109,11 @@ after(async () => {
   if (host?.listening) await new Promise((r) => host.close(r))
   await fs.rm(scratch, { recursive: true, force: true })
 })
-test('五个内置 Skill 调用本机命令，完成提交、轮询及媒体入库', async () => {
-  for (const s of skills.list().filter((skill) => skill.command && skill.kind !== 'guide')) {
+test('内置 Skill 调用本机命令，完成提交、轮询及媒体入库', async () => {
+  const entries = skills.list().filter((skill) => skill.command && skill.kind !== 'guide')
+  const actor = { ...makeCard(), name: '声音测试' }
+  project.save({ ...project.data, cards: [actor] })
+  for (const s of entries) {
     cfg.update({
       id: s.id,
       url: url + (s.id === 'hunyuan-image' ? '' : '/api'),
@@ -113,13 +124,32 @@ test('五个内置 Skill 调用本机命令，完成提交、轮询及媒体入�
     const result = await skills.run(
       project,
       s.id,
-      { prompt: '抽象色块过渡', assetFree: true, duration: s.id === 'minimax-video' ? 6 : 5 },
+      {
+        prompt: s.kind === 'audio' ? '说普通话，平静自然' : '抽象色块过渡',
+        ...(s.kind === 'audio' ? { cardId: actor.id, sampleText: '我在等你。' } : {}),
+        assetFree: true,
+        duration: s.id === 'minimax-video' ? 6 : 5
+      },
       running.signal
     )
     assert.equal(result[0].kind, s.kind)
+    if (s.kind === 'audio') assert.equal(project.data.cards[0].voiceAssetId, result[0].id)
     assert.ok((await fs.stat(project.assetPath(result[0]))).size)
   }
-  assert.equal(project.data.assets.length, 5)
+  assert.equal(project.data.assets.length, entries.length)
+  const preset = await skills.run(
+    project,
+    'minimax-speech',
+    {
+      cardId: actor.id,
+      voiceId: 'test-voice',
+      sampleText: '我在等你。'
+    },
+    running.signal
+  )
+  assert.equal(project.data.cards[0].voiceAssetId, preset[0].id)
+  const speechRequest = received.find((r) => r.url === '/api/t2a_v2')
+  assert.equal(JSON.parse(speechRequest.data).voice_setting.voice_id, 'test-voice')
   assert.ok(received.filter((r) => r.url.startsWith('/file.')).every((r) => !r.headers.authorization))
   assert.throws(() => skills.manage('minimax-video', 'remove'))
   skills.manage('openai-image', 'disable')

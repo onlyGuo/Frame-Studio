@@ -1,7 +1,7 @@
 <script setup vapor>
 import { computed, ref, onMounted, nextTick } from 'vue'
-import { doc, ui, edit, generate } from '../../store.js'
-import { makeCard, uid } from '../../../shared/model.mjs'
+import { doc, ui, edit, generate, media, uploadVoice } from '../../store.js'
+import { makeCard, uid, validateVoiceSample } from '../../../shared/model.mjs'
 import {
   bindSettingImage,
   defaultOutfit,
@@ -20,6 +20,17 @@ const highlight = ref('')
 const outfitSelection = ref({})
 const pane = ref(null)
 const cards = computed(() => doc.value.cards)
+const voiceSamples = computed(() =>
+  doc.value.assets.filter((asset) => {
+    if (asset.kind !== 'audio') return false
+    try {
+      validateVoiceSample(asset)
+      return true
+    } catch {
+      return false
+    }
+  })
+)
 const usage = computed(() => indexShotMentions(doc.value.episodes))
 const visible = computed(() =>
   filter.value === '全部' ? cards.value : cards.value.filter((c) => c.type === filter.value)
@@ -54,6 +65,7 @@ function patchCard(id, key, value) {
       delete card.outfits
       delete card.defaultOutfitId
     }
+    if (key === 'type' && value !== '角色') delete card.voiceAssetId
     card[key] = value
   })
 }
@@ -254,6 +266,35 @@ onMounted(() => {
           <button class="icon" title="移除设定卡" @click="removeCard(c.id)">
             <Glyph name="trash" />
           </button>
+        </div>
+        <div v-if="c.type === '角色'" class="voice-editor form-stack">
+          <label>
+            角色声音样本
+            <select
+              :value="c.voiceAssetId || ''"
+              @change="patchCard(c.id, 'voiceAssetId', $event.target.value)"
+            >
+              <option value="">未绑定样音</option>
+              <option v-for="sample in voiceSamples" :key="sample.id" :value="sample.id">
+                {{ sample.name }}
+              </option>
+            </select>
+          </label>
+          <audio
+            v-if="c.voiceAssetId"
+            :key="c.voiceAssetId"
+            :src="media(c.voiceAssetId)"
+            controls
+            preload="none"
+          />
+          <div class="actions">
+            <button type="button" class="outline" @click="generate('', '', c.id, 'audio')">
+              <Glyph name="spark" />
+              生成样音
+            </button>
+            <button type="button" class="outline" @click="uploadVoice(c.id)">上传样音</button>
+          </div>
+          <small>同一角色的所有服饰共用样音。使用 2–15 秒的单人 WAV 或 MP3。</small>
         </div>
         <details v-if="usage.get(c.id)?.length" class="setting-uses" :open="highlight === c.id">
           <summary>引用镜头 · {{ usage.get(c.id).length }}</summary>

@@ -15,8 +15,8 @@ export async function generateLegacyImage() {
 }
 
 /** 提交一次异步任务，轮询至终态，只下载该任务的产物。 */
-export async function generateAsync(route, body, imageOrVideoUrl) {
-  const result = await request(route, body, { 'X-DashScope-Async': 'enable' })
+export async function generateAsync(route, body, imageOrVideoUrl, headers) {
+  const result = await request(route, body, { 'X-DashScope-Async': 'enable', ...headers })
   if (!result.output?.task_id) await fail('submit', 'format')
   await poll(async () => {
     const { output } = await request('/tasks/' + encodeURIComponent(result.output.task_id))

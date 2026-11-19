@@ -10,6 +10,63 @@ import fs from 'node:fs/promises'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { ffmpegPath } from '../desktop/services/media.mjs'
+
+/** 覆盖截图中的超宽窗口、最小窗口和助手占用横向空间时的工作区。 */
+async function verifyResponsiveWorkspace(page) {
+  const original = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))
+  const views = [
+    ['项目总览', '.overview-panels'],
+    ['剧本写作', '.screenplay-desk'],
+    ['角色与设定', '.setting-desk'],
+    ['分镜工作台', '.shot-console'],
+    ['素材库', '.media-pool'],
+    ['剪辑台', '.cut-room']
+  ]
+  const frames = []
+  for (const size of [
+    { width: 3440, height: 1440 },
+    { width: 900, height: 600 }
+  ]) {
+    await page.setViewportSize(size)
+    for (const [name, selector] of views) {
+      await page.getByRole('button', { name, exact: true }).click()
+      const layout = await page.locator(selector).evaluate((panel) => {
+        const main = panel.closest('main')
+        return {
+          width: panel.getBoundingClientRect().width,
+          viewport: main.clientWidth,
+          scroll: main.scrollWidth
+        }
+      })
+      assert.ok(layout.width >= layout.viewport - 80, name + ' 未铺满工作区 ' + JSON.stringify(layout))
+      assert.ok(layout.scroll <= layout.viewport + 1, name + ' 发生横向溢出 ' + JSON.stringify(layout))
+    }
+    frames.push(await page.locator('.program-monitor .frame').boundingBox())
+    if (size.width === 3440) {
+      const bottom = await page.locator('.cut-timeline').evaluate((timeline) => ({
+        timeline: timeline.getBoundingClientRect().bottom,
+        viewport: timeline.closest('main').getBoundingClientRect().bottom
+      }))
+      assert.ok(bottom.timeline >= bottom.viewport - 50, JSON.stringify(bottom))
+    }
+    await page.getByRole('button', { name: '项目工作台', exact: true }).click()
+    await page.getByRole('heading', { name: '项目工作台', exact: true }).waitFor()
+    const library = await page.locator('.home-library').boundingBox()
+    const main = await page.locator('.body > main').boundingBox()
+    assert.ok(library.width >= main.width - 80)
+    await page.locator('.home-projects button').first().click()
+    await page.getByRole('heading', { name: '创作工作区' }).waitFor()
+  }
+  assert.ok(frames[0].width > frames[1].width * 1.5, JSON.stringify(frames))
+  await page.getByRole('button', { name: '剪辑台', exact: true }).click()
+  await page.getByRole('button', { name: '创作助手', exact: true }).click()
+  const monitor = await page.locator('.program-monitor').boundingBox()
+  const inspector = await page.locator('.cut-inspector').boundingBox()
+  assert.ok(inspector.y >= monitor.y + monitor.height - 1)
+  await page.getByRole('button', { name: '关闭助手' }).click()
+  await page.setViewportSize(original)
+}
+
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'frame-window-'))
 const shot = path.join(root, '场景.png')
 const encoded = spawnSync(ffmpegPath, [
@@ -25,6 +82,15 @@ const encoded = spawnSync(ffmpegPath, [
 ])
 assert.equal(encoded.status, 0)
 const videoFile = path.join(root, '模拟分镜.mp4')
+const voiceFile = path.join(root, '模拟样音.wav')
+const speechFile = path.join(root, '合成样音.mp3')
+for (const file of [voiceFile, speechFile])
+  assert.equal(
+    spawnSync(ffmpegPath, ['-loglevel', 'error', '-f', 'lavfi', '-i', 'sine=frequency=220', '-t', '4', file])
+      .status,
+    0
+  )
+const speechHex = (await fs.readFile(speechFile)).toString('hex')
 assert.equal(
   spawnSync(ffmpegPath, [
     '-loglevel',
@@ -59,6 +125,11 @@ const server = http.createServer(async (req, res) => {
     return res.end(await fs.readFile(shot))
   }
   res.setHeader('Content-Type', 'application/json')
+  if (req.url === '/speech/v1/voice_design') {
+    assert.equal(req.headers.authorization, 'Bearer voice-test-credential')
+    assert.match(JSON.parse(raw).prompt, /普通话/)
+    return res.end(JSON.stringify({ voice_id: 'test-audio', trial_audio: speechHex }))
+  }
   if (req.url === '/clip.mp4') {
     res.setHeader('Content-Type', 'video/mp4')
     return res.end(await fs.readFile(videoFile))
@@ -159,11 +230,13 @@ try {
     dialog.showOpenDialog = async (_win, options) => ({
       canceled: false,
       filePaths:
-        ['导入媒体', '选择设定参考图'].includes(options.title) || options.title?.startsWith('找回「')
-          ? [base + '/场景.png']
-          : options.filters
-            ? [base + '/test.framepack']
-            : [base]
+        options.title === '上传角色样音'
+          ? [base + '/模拟样音.wav']
+          : ['导入媒体', '选择设定参考图'].includes(options.title) || options.title?.startsWith('找回「')
+            ? [base + '/场景.png']
+            : options.filters
+              ? [base + '/test.framepack']
+              : [base]
     })
     dialog.showSaveDialog = async () => ({ canceled: false, filePath: base + '/test.framepack' })
   }, root)
@@ -172,6 +245,9 @@ try {
   page.on('pageerror', (err) => errors.push(err.message))
   await page.getByRole('heading', { name: '开始一部短剧' }).waitFor()
   const appearance = page.getByLabel('外观模式')
+  assert.equal(await appearance.inputValue(), 'dark')
+  assert.equal(await app.evaluate(({ nativeTheme }) => nativeTheme.themeSource), 'dark')
+  assert.equal(await appearance.evaluate((select) => getComputedStyle(select).opacity), '1')
   for (const mode of ['light', 'dark']) {
     await appearance.selectOption(mode)
     await page.waitForFunction((expected) => document.documentElement.dataset.theme === expected, mode)
@@ -194,6 +270,19 @@ try {
   await page.getByRole('button', { name: '导入素材', exact: true }).click()
   await page.getByRole('button', { name: '加入剪辑' }).click()
   await page.getByRole('button', { name: '剪辑台', exact: true }).click()
+  const inspectorContrast = await page.locator('.cut-inspector > header').evaluate((header) => {
+    const channels = (value) => value.match(/\d+/g).map((channel) => Number(channel) / 255)
+    const luminance = (value) =>
+      channels(value)
+        .map((channel) => (channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4))
+        .reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0)
+    const background = luminance(getComputedStyle(header).backgroundColor)
+    return [...header.querySelectorAll('button')].map((button) => {
+      const foreground = luminance(getComputedStyle(button).color)
+      return (Math.max(background, foreground) + 0.05) / (Math.min(background, foreground) + 0.05)
+    })
+  })
+  assert.ok(inspectorContrast.length > 0 && inspectorContrast.every((ratio) => ratio >= 4.5))
   await page.locator('.lane button').first().click()
   await page.getByLabel('时长（秒）', { exact: true }).fill('0.8')
   await page.getByLabel('片段字幕').fill('雨后')
@@ -261,6 +350,30 @@ try {
   assert.match(videoCalls[0].input.prompt, /连续画面。叶宁/)
   assert.equal(videoCalls[0].input.media[0].type, 'first_frame')
   assert.match(videoCalls[0].input.media[0].url, /^data:image\/png;base64,/)
+  await page.getByRole('button', { name: '模型配置', exact: true }).click()
+  await page.getByRole('button', { name: '视频生成', exact: true }).click()
+  await page.getByLabel('服务协议').selectOption('vllm-h3')
+  assert.equal(await page.getByLabel('推理步数').inputValue(), '10')
+  await page.getByRole('button', { name: '声音生成', exact: true }).click()
+  await page.getByLabel('API 基础地址').fill('http://127.0.0.1:' + server.address().port + '/speech/v1')
+  await page.getByLabel('API Key').fill('voice-test-credential')
+  await page.getByRole('button', { name: '保存配置' }).click()
+  await page.getByRole('button', { name: '关闭', exact: true }).click()
+  await page.getByRole('button', { name: '角色与设定', exact: true }).click()
+  const actor = page.getByRole('article', { name: '角色设定：叶宁' })
+  await actor.getByRole('button', { name: '上传样音' }).click()
+  await actor.locator('audio').waitFor()
+  const uploadedVoice = await actor.getByLabel('角色声音样本').inputValue()
+  assert.ok(uploadedVoice)
+  await actor.getByRole('button', { name: '生成样音' }).click()
+  await page.getByLabel('音色描述').fill('普通话，沉稳自然')
+  await page.getByRole('button', { name: '开始生成', exact: true }).click()
+  await page.getByRole('dialog', { name: '生成素材' }).waitFor({ state: 'hidden' })
+  await page.getByText('样音已绑定至角色卡', { exact: true }).waitFor()
+  const newVoice = await actor.getByLabel('角色声音样本').inputValue()
+  assert.ok(newVoice && newVoice !== uploadedVoice)
+  assert.match(await actor.locator('audio').getAttribute('src'), new RegExp(newVoice + '$'))
+  await verifyResponsiveWorkspace(page)
   await page.getByRole('button', { name: 'Skill 管理', exact: true }).click()
   assert.equal(
     await page.getByRole('switch').count(),

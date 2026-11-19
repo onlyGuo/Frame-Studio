@@ -21,18 +21,20 @@ import { Settings } from './services/settings.mjs'
 import { BackgroundAgent } from './agent/background.mjs'
 import { VideoBatch } from './services/video-batch.mjs'
 import { reconcile } from '../shared/reconcile.mjs'
-import { renderEpisode, probe } from './services/media.mjs'
+import { renderEpisode, probe, probeVoiceSample } from './services/media.mjs'
 import { mediaResponse } from './core/protocol.mjs'
 import { runWorkCommand } from './services/work-command.mjs'
 import { requestCaptions, receiveCaptions } from './core/caption-request.mjs'
 import { mediaKinds } from '../shared/model.mjs'
+import { prepareMediaTarget, commitMediaTarget } from '../shared/shot-media.mjs'
+import { configHome } from './core/config-home.mjs'
 const base = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const dev =
   !app.isPackaged && /^http:\/\/127\.0\.0\.1:\d+\/$/.test(process.env.STUDIO_DEV_URL || '')
     ? process.env.STUDIO_DEV_URL
     : null
 const entry = dev || pathToFileURL(path.join(base, 'dist/index.html')).href
-const root = (!app.isPackaged && process.env.STUDIO_TEST_HOME) || path.join(os.homedir(), '.ai-video-studio')
+const root = configureStorage()
 let win,
   settings,
   skills,
@@ -46,14 +48,13 @@ const agent = new BackgroundAgent((event) => {
 const batch = new VideoBatch((task, state) => {
   if (win && !win.isDestroyed()) win.webContents.send('studio:batch', { task, state })
 })
-app.setPath('userData', path.join(root, 'desktop'))
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'studio-media',
     privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true }
   }
 ])
-if (!app.requestSingleInstanceLock()) app.quit()
+if (!root || !app.requestSingleInstanceLock()) app.quit()
 else {
   app.on('second-instance', () => {
     if (win?.isMinimized()) win.restore()
@@ -73,6 +74,7 @@ else {
       nativeTheme.on('updated', () => {
         if (win && !win.isDestroyed()) {
           win.setBackgroundColor(windowColor())
+          if (process.platform !== 'darwin') win.setTitleBarOverlay(titleBarColors())
           win.webContents.send('studio:appearance', nativeTheme.shouldUseDarkColors)
         }
       })
@@ -103,9 +105,26 @@ else {
       app.quit()
     })
 }
+/** 先确定配置位置，再让 Electron 打开浏览器状态并获取单实例锁。 */
+function configureStorage() {
+  try {
+    const directory = (!app.isPackaged && process.env.STUDIO_TEST_HOME) || configHome(os.homedir())
+    app.setPath('userData', path.join(directory, 'desktop'))
+    return directory
+  } catch (err) {
+    dialog.showErrorBox('工作室启动失败', '无法打开本地配置目录。\n' + err.message)
+    return null
+  }
+}
 /** 窗口与网页用相同的底色，加载工程时保持连贯。 */
 function windowColor() {
   return nativeTheme.shouldUseDarkColors ? '#111317' : '#f5f5f8'
+}
+/** 让系统窗口按钮沿用工作室工具栏的背景和文字颜色。 */
+function titleBarColors() {
+  return nativeTheme.shouldUseDarkColors
+    ? { color: '#1b1e24', symbolColor: '#eeeff5' }
+    : { color: '#ffffff', symbolColor: '#242632' }
 }
 /** 创建隔离渲染窗口并协调关闭前保存。 */
 function createWindow() {
@@ -113,8 +132,12 @@ function createWindow() {
   win = new BrowserWindow({
     width: 1440,
     height: 940,
-    minWidth: 1020,
-    minHeight: 660,
+    minWidth: 900,
+    minHeight: 600,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { height: 47, ...(process.platform === 'darwin' ? {} : titleBarColors()) },
+    ...(process.platform === 'darwin' ? { trafficLightPosition: { x: 14, y: 17 } } : {}),
+    autoHideMenuBar: true,
     icon: app.isPackaged
       ? path.join(process.resourcesPath, 'studio-icon.png')
       : path.join(base, 'build/icon.png'),
@@ -254,17 +277,29 @@ function register() {
     addMedia: async (p) => {
       const project = projectFor(p.session)
       const imagesOnly = p.kind === 'image'
+      const target = p.cardId && prepareMediaTarget(project.data, 'audio', p)
       const extensions = Object.entries(mediaKinds)
-        .filter(([, kind]) => !imagesOnly || kind === 'image')
+        .filter(([ext, kind]) => (target ? ['.mp3', '.wav'].includes(ext) : !imagesOnly || kind === 'image'))
         .map(([ext]) => ext.slice(1))
       const r = await dialog.showOpenDialog(win, {
-        title: imagesOnly ? '选择设定参考图' : '导入媒体',
-        properties: imagesOnly ? ['openFile'] : ['openFile', 'multiSelections'],
-        filters: [{ name: imagesOnly ? '图片' : '媒体素材', extensions }]
+        title: target ? '上传角色样音' : imagesOnly ? '选择设定参考图' : '导入媒体',
+        properties: target || imagesOnly ? ['openFile'] : ['openFile', 'multiSelections'],
+        filters: [{ name: target ? '角色样音' : imagesOnly ? '图片' : '媒体素材', extensions }]
       })
       if (r.canceled) return
-      const added = await project.addMedia(r.filePaths, probe)
-      return { ...project.snapshot(), importedIds: added.map((a) => a.id) }
+      let binding
+      const inspect = target ? (file) => probeVoiceSample(file) : probe
+      const added = await project.addMedia(
+        r.filePaths,
+        inspect,
+        undefined,
+        target
+          ? (draft, [audio]) => {
+              binding = commitMediaTarget(draft, audio, target)
+            }
+          : undefined
+      )
+      return { ...project.snapshot(), importedIds: added.map((a) => a.id), ...binding }
     },
     recoverImage: async (p) => {
       const project = projectFor(p.session)

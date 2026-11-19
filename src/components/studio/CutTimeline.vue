@@ -8,8 +8,12 @@ const emit = defineEmits(['seek', 'select', 'move', 'split'])
 const scroll = ref(null),
   viewport = ref(540),
   scrollLeft = ref(0),
-  zoom = ref(48)
+  requestedZoom = ref(null)
 const span = computed(() => Math.max(props.total, ...episode.value.audio.map((c) => c.start + c.duration), 1))
+const zoom = computed(() => {
+  if (requestedZoom.value === 'fit') return Math.min(180, Math.max(1, viewport.value - 1) / span.value)
+  return requestedZoom.value ?? Math.max(32, Math.min(180, viewport.value / 24))
+})
 const scale = computed(() => Math.min(zoom.value, 8000000 / span.value))
 const width = computed(() => Math.max(viewport.value, Math.ceil(span.value * scale.value) + 1))
 const interval = computed(
@@ -32,7 +36,7 @@ const labels = computed(() =>
 const captions = computed(() => props.rail.filter((c) => c.caption))
 let observer
 function fit() {
-  zoom.value = Math.min(180, (viewport.value - 1) / span.value)
+  requestedZoom.value = 'fit'
 }
 function scrub(e) {
   const el = e.currentTarget
@@ -80,7 +84,13 @@ onBeforeUnmount(() => observer?.disconnect())
         </button>
         <label class="inline cut-zoom">
           缩放
-          <input type="range" min="2" max="180" :value="zoom" @input="zoom = $event.target.valueAsNumber" />
+          <input
+            type="range"
+            min="2"
+            max="180"
+            :value="zoom"
+            @input="requestedZoom = $event.target.valueAsNumber"
+          />
         </label>
         <button title="适配整条时间线" @click="fit">适配</button>
       </div>

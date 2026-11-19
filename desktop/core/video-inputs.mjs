@@ -7,6 +7,5 @@ const source = packaged
   ? pathToFileURL(path.join(process.resourcesPath, 'skills/_lib/video-inputs.mjs'))
   : new URL('../../resources/skills/_lib/video-inputs.mjs', import.meta.url)
 
-export const { isMiniMaxH3, validateVideoInputs, videoDurations, videoPromptInput } = await import(
-  source.href
-)
+export const { isMiniMaxH3, supportsReferenceAudio, validateVideoInputs, videoDurations, videoPromptInput } =
+  await import(source.href)

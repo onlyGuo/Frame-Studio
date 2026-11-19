@@ -203,6 +203,16 @@ export async function importMedia(kind) {
     }
   })
 }
+/** 上传时由主进程将样音导入和角色绑定原子提交。 */
+export async function uploadVoice(cardId) {
+  return perform('正在导入角色样音', async () => {
+    const result = await api.addMedia({ session: ui.session, cardId })
+    if (result) {
+      accept(result, true)
+      notify(result.warning || '样音已绑定至角色卡')
+    }
+  })
+}
 /** 保留目标分集与分镜，使生成弹窗能够准确显示即将制作的内容。 */
 export function generate(prompt = '', shotId = '', cardId = '', kind = '', outfitId) {
   ui.generation = { prompt, shotId, cardId, kind, outfitId, episodeId: episode.value.id }
@@ -219,6 +229,8 @@ export async function runGeneration(g) {
     destination: g.destination,
     assetFree: g.assetFree,
     prompt: g.prompt,
+    sampleText: g.sampleText,
+    voiceId: g.voiceId,
     duration: g.duration
   })
   accept(result.state, true)

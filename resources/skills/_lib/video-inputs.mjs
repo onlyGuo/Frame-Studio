@@ -2,6 +2,7 @@ export const isMiniMaxH3 = (model = '') => /^MiniMax-H3(?:-(?:Highspeed|Lite|Max
 
 /** 内置视频适配器实际实现的图像输入模式。自定义模型仅在能力明确时接收图片。 */
 export function videoInputMode(provider, model = '') {
+  if (provider === 'vllm-h3') return 'h3'
   if (provider === 'aliyun-video') {
     if (/^wan3\.0-video(?:-|$)/i.test(model)) return 'wan-multi'
     if (/^wan2\.7-r2v(?:-|$)/i.test(model)) return 'wan-subjects'
@@ -18,13 +19,14 @@ export function videoInputMode(provider, model = '') {
 }
 
 /** 同一模式同时决定提示词的参考编号和发送给供应商的图片角色。 */
-export function videoPromptInput(provider, model, references) {
+export function videoPromptInput(provider, model, references, audioReferences = []) {
   const kind = videoInputMode(provider, model)
   const frame = references.find((ref) => ref.type === '分镜参考')
-  if (!references.length) return { mode: 'text', firstFrame: null, subjects: [] }
+  if (!references.length)
+    return { mode: audioReferences.length ? 'references' : 'text', firstFrame: null, subjects: [] }
   if (
     ['optional-frame', 'required-frame'].includes(kind) ||
-    (['wan-multi', 'h3'].includes(kind) && frame && references.length === 1)
+    (['wan-multi', 'h3'].includes(kind) && frame && references.length === 1 && !audioReferences.length)
   )
     return { mode: 'first-frame', firstFrame: frame, subjects: [] }
   const separateFrame = kind === 'wan-subjects' && frame && references.length > 1
@@ -37,6 +39,7 @@ export function videoPromptInput(provider, model, references) {
 
 /** 时长选择在手动表单和后台生成中使用同一组供应商限制。 */
 export function videoDurations(provider, model) {
+  if (provider === 'vllm-h3') return Array.from({ length: 12 }, (_, i) => i + 4)
   if (provider === 'minimax-video') {
     if (!isMiniMaxH3(model)) return [6, 10]
     const start = /-max$/i.test(model) ? 5 : 4
@@ -48,12 +51,29 @@ export function videoDurations(provider, model) {
   )
 }
 
+/** 旧视频型号仍可制作普通有声镜头，只有实际支持的型号收到样音。 */
+export function supportsReferenceAudio(provider, model) {
+  return ['wan-multi', 'h3'].includes(videoInputMode(provider, model))
+}
+
 /** 提交前核对每一张已选的图片是否都会发送，容量与接口模式保持一致。 */
-export function validateVideoInputs(provider, model, references = []) {
+export function validateVideoInputs(provider, model, references = [], audioReferences = []) {
   const mode = videoInputMode(provider, model)
   const count = references.length
   let message, code
-  if (mode === 'remote-only') {
+  const audioLimit = mode === 'h3' ? 3 : 5
+  if (audioReferences.length && !count && mode === 'h3') {
+    code = 'audio_reference_image'
+    message = 'H3 的角色样音需要搭配至少一张参考图，请绑定角色图或分镜底图。'
+  } else if (
+    audioReferences.length > audioLimit ||
+    audioReferences.reduce((total, ref) => total + Math.round(ref.duration * 1000), 0) > 15000 ||
+    (provider === 'vllm-h3' && count + audioReferences.length > 12)
+  ) {
+    code = 'audio_reference_limit'
+    message =
+      '角色样音超出当前模型的容量（最多 ' + audioLimit + ' 段，合计最多 15 秒）。请缩短样音或拆分镜头。'
+  } else if (mode === 'remote-only') {
     code = 'reference_upload'
     message = '该型号要求远程素材。请改用可接收本地参考图的视频模型。'
   } else if (!count && ['required-frame', 'wan-subjects'].includes(mode)) {

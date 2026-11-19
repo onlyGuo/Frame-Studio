@@ -99,6 +99,7 @@ export function providerEnvironment(settings, provider) {
     STUDIO_API_KEY: cfg.key,
     STUDIO_MODEL: cfg.model,
     STUDIO_SECRET_ID: cfg.secretId,
-    STUDIO_REGION: cfg.region
+    STUDIO_REGION: cfg.region,
+    ...(provider === 'vllm-h3' ? { STUDIO_INFERENCE_STEPS: String(cfg.steps ?? 10) } : {})
   }
 }

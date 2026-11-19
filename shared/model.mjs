@@ -125,9 +125,15 @@ const outfittedCard = fields({
   outfits: list(fields({ id, name: str(200, 1), notes: str(), assetId: refId }), 100),
   defaultOutfitId: id
 })
-const card = (value) =>
-  legacyCard(value) ||
-  (outfittedCard(value) && value.type === '角色' && value.outfits.some((o) => o.id === value.defaultOutfitId))
+const card = (value) => value && validCard(value)
+function validCard(value) {
+  const { voiceAssetId, ...base } = value
+  if (Object.hasOwn(value, 'voiceAssetId') && (base.type !== '角色' || !refId(voiceAssetId))) return false
+  return (
+    legacyCard(base) ||
+    (outfittedCard(base) && base.type === '角色' && base.outfits.some((o) => o.id === base.defaultOutfitId))
+  )
+}
 export const mediaKinds = {
   '.png': 'image',
   '.jpg': 'image',
@@ -173,6 +179,8 @@ export function validateProject(value) {
   }
   for (const c of value.cards) {
     check(c.assetId, ['image'])
+    check(c.voiceAssetId, ['audio'])
+    if (c.voiceAssetId) validateVoiceSample(assets.get(c.voiceAssetId))
     for (const outfit of c.outfits || []) check(outfit.assetId, ['image'])
   }
   for (const e of value.episodes) {
@@ -187,6 +195,12 @@ export function validateProject(value) {
     }
   }
   return value
+}
+
+/** 角色卡保存可同时供海螺和万相参考的单人样音。 */
+export function validateVoiceSample(asset) {
+  if (!['.wav', '.mp3'].includes(asset?.ext) || !(asset.duration >= 2 && asset.duration <= 15))
+    throw Error('角色样音须为 2–15 秒的 WAV 或 MP3。')
 }
 
 /** 以起点和时长构建连续主画面轨道。 */

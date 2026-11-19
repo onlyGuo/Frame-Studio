@@ -22,6 +22,8 @@ const box = ref(null),
   showGuide = ref('')
 const skill = ref(''),
   prompt = ref(''),
+  sampleText = ref(''),
+  voiceId = ref(''),
   duration = ref(5),
   executable = ref('node'),
   args = ref('["--version"]'),
@@ -40,7 +42,7 @@ const choices = computed(() =>
       s.command &&
       (!s.provider || ui.config.profiles[s.provider]?.ready) &&
       (!ui.generation?.kind || s.kind === ui.generation.kind) &&
-      (!ui.generation?.cardId || s.kind === 'image') &&
+      (!ui.generation?.cardId || ['image', 'audio'].includes(s.kind)) &&
       (!ui.generation?.shotId || s.kind !== 'audio')
   )
 )
@@ -57,7 +59,9 @@ const formatterUnavailable = computed(() =>
 const commandEpisode = computed(() => doc.value?.episodes.find((e) => e.id === ui.episodeId))
 const commandShot = computed(() => commandEpisode.value?.shots.find((s) => s.id === commandTarget.value))
 const selectedCard = computed(() => doc.value?.cards.find((c) => c.id === ui.generation?.cardId))
-const selectedOutfit = computed(() => roleOutfit(selectedCard.value, ui.generation?.outfitId))
+const selectedOutfit = computed(() =>
+  skillKind.value === 'audio' ? undefined : roleOutfit(selectedCard.value, ui.generation?.outfitId)
+)
 const videoCommand = computed(() => mediaKinds[ext.value] === 'video')
 const commandVideoService = computed(() =>
   ui.config.profiles[provider.value]?.group === 'video'
@@ -135,10 +139,13 @@ function load() {
   if (ui.modal === 'generate') {
     const preferred =
       choices.value.find((s) => s.id === ui.config.mediaDefaults.image) ||
-      choices.value.find((s) => s.id === ui.config.mediaDefaults.video)
+      choices.value.find((s) => s.id === ui.config.mediaDefaults.video) ||
+      choices.value.find((s) => s.id === ui.config.mediaDefaults.audio)
     skill.value = preferred?.id || choices.value[0]?.id || ''
     target.value = 'newShot'
     prompt.value = ui.generation?.shotId ? '' : ui.generation?.prompt || ''
+    sampleText.value = ''
+    voiceId.value = ''
   }
   nextTick(() => box.value?.querySelector('input,textarea,select,button')?.focus())
 }
@@ -157,6 +164,7 @@ function saveSettings(clear = false) {
       key: clear ? '' : key.value || undefined,
       secretId: form.value.secretId,
       region: form.value.region,
+      steps: form.value.steps,
       active: use.value
     })
     pick(profile.value)
@@ -197,6 +205,7 @@ function run() {
         ...(skillKind.value === 'video' && !ui.generation.shotId ? mediaDestination(target.value) : {}),
         skillId: skill.value,
         prompt: skillKind.value === 'video' && selectedShot.value ? '' : prompt.value,
+        ...(skill.value === 'minimax-speech' ? { sampleText: sampleText.value, voiceId: voiceId.value } : {}),
         assetFree: skillKind.value === 'video' && !selectedShot.value && assetFree.value,
         duration: duration.value
       })
@@ -206,7 +215,9 @@ function run() {
           (result.shotId
             ? '成品已绑定至分镜'
             : result.cardId
-              ? '参考图已绑定至设定卡'
+              ? skillKind.value === 'audio'
+                ? '样音已绑定至角色卡'
+                : '参考图已绑定至设定卡'
               : '生成结果已保存至素材库')
       )
     },
@@ -333,6 +344,7 @@ onBeforeUnmount(() => {
                 ['llm', '语言模型'],
                 ['image', '图像生成'],
                 ['video', '视频生成'],
+                ['audio', '声音生成'],
                 ['agent', '助手运行']
               ]"
               :key="g[0]"
@@ -365,6 +377,10 @@ onBeforeUnmount(() => {
               模型名称
               <input v-model="form.model" required />
             </label>
+            <label v-if="profile === 'vllm-h3'">
+              推理步数
+              <input v-model.number="form.steps" type="number" min="1" step="1" required />
+            </label>
             <label v-if="profile === 'hunyuan-image'">
               SecretId
               <input v-model="form.secretId" required />
@@ -375,7 +391,13 @@ onBeforeUnmount(() => {
                 type="password"
                 autocomplete="new-password"
                 v-model="key"
-                :placeholder="form.configured ? '已保存，留空保留原凭据' : '输入密钥'"
+                :placeholder="
+                  form.configured
+                    ? '已保存，留空保留原凭据'
+                    : profile === 'vllm-h3'
+                      ? '服务启用鉴权时填写'
+                      : '输入密钥'
+                "
               />
             </label>
             <label class="inline">
@@ -383,7 +405,7 @@ onBeforeUnmount(() => {
               {{
                 group === 'llm'
                   ? '设为创作助手使用的协议'
-                  : '设为默认' + (group === 'image' ? '图像' : '视频') + '生成服务'
+                  : '设为默认' + { image: '图像', video: '视频', audio: '声音' }[group] + '生成服务'
               }}
             </label>
             <p v-if="group !== 'llm'" class="hint">
@@ -462,7 +484,15 @@ onBeforeUnmount(() => {
           </div>
           <div v-if="selectedCard" class="generation-shot">
             <strong>{{ selectedCard.name }}{{ selectedOutfit ? ' · ' + selectedOutfit.name : '' }}</strong>
-            <p>{{ selectedOutfit ? '生成五视图角色参考图' : '按设定描述生成参考图' }}</p>
+            <p>
+              {{
+                skillKind === 'audio'
+                  ? '生成角色声音样本'
+                  : selectedOutfit
+                    ? '生成五视图角色参考图'
+                    : '按设定描述生成参考图'
+              }}
+            </p>
           </div>
           <VideoAssetInput
             v-if="skillKind === 'video'"
@@ -473,6 +503,26 @@ onBeforeUnmount(() => {
             :destination="target"
             @review="reviewVideo"
           />
+          <template v-else-if="skill === 'minimax-speech'">
+            <label>
+              音色描述
+              <textarea
+                v-model="prompt"
+                rows="3"
+                maxlength="1000"
+                :required="!voiceId.trim() && !selectedCard?.notes.trim()"
+                placeholder="例如：年轻男声，自然沉稳，音域偏低，普通话"
+              />
+            </label>
+            <label>
+              MiniMax 音色 ID（可选）
+              <input v-model="voiceId" maxlength="256" placeholder="填写后使用该音色合成样音" />
+            </label>
+            <label>
+              试听台词（可选）
+              <textarea v-model="sampleText" rows="2" maxlength="500" placeholder="留空使用默认试听台词" />
+            </label>
+          </template>
           <label v-else>
             {{ shotText || selectedCard ? '本次补充要求' : '提示词' }}
             <textarea

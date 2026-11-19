@@ -1,7 +1,7 @@
 /* 写作台的分集与全文共享定位，侧栏只负责导航。 */
 .screenplay-desk {
   display: grid;
-  grid-template-columns: minmax(165px, 220px) minmax(0, 1fr);
+  grid-template-columns: clamp(165px, 20cqw, 320px) minmax(0, 1fr);
   gap: 14px;
   align-items: start;
 }
@@ -150,7 +150,7 @@
 .manuscript textarea.script-text {
   display: block;
   width: 100%;
-  height: clamp(250px, 43vh, 650px);
+  height: clamp(240px, calc(100dvh - 360px), 75dvh);
   min-height: 160px;
   margin-top: 8px;
   padding: 6px 0;
@@ -222,7 +222,7 @@
 .pool-body {
   display: flex;
   align-items: stretch;
-  min-height: 330px;
+  min-height: clamp(330px, 60dvh, 900px);
 }
 .pool-collection {
   flex: 1;
@@ -263,7 +263,7 @@
 }
 .pool-items {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 145px), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, clamp(145px, 11cqw, 215px)), 1fr));
   align-content: start;
   gap: 12px;
   padding: 14px;
@@ -367,7 +367,7 @@
   padding-right: 4px;
 }
 .pool-inspector {
-  flex: 0 1 260px;
+  flex: 0 1 clamp(210px, 24cqw, 400px);
   min-width: 195px;
   border-left: 1px solid var(--line);
   background: var(--paper);

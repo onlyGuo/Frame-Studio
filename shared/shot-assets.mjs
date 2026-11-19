@@ -1,6 +1,45 @@
 import { mentionToken, parseMentions } from './mentions.mjs'
 import { roleOutfit, settingImage, settingLabel } from './outfits.mjs'
 
+/** 从对白的说话人标签读取角色，台词里提到的名字不会带入样音。 */
+export function shotSpeakers(doc, shot) {
+  const speakers = new Map()
+  const roles = doc.cards.filter((card) => card.type === '角色')
+  for (const line of (shot.dialogue || '').split('\n')) {
+    const cues = [
+      ...line
+        .trimStart()
+        .matchAll(
+          /(?:^|(?<=[。？！!?；;])\s*)(@\{card:[\w-]+(?::[\w-]+)?\}|[^：:。？！!?；;\s][^：:。？！!?；;]{0,79})\s*[：:]\s*/gu
+        )
+    ]
+    if (cues[0]?.index !== 0) continue
+    for (const [, label] of cues) {
+      const marker = parseMentions(label)[0]
+      const matches =
+        marker?.type === 'card'
+          ? roles.filter((card) => card.id === marker.id)
+          : roles.filter((card) => card.name === label.trim())
+      if (matches.length === 1) speakers.set(matches[0].id, matches[0])
+    }
+  }
+  return [...speakers.values()]
+}
+
+/** 每个角色跨服饰复用同一份样音，同一文件只提交一次。 */
+export function shotVoiceReferences(doc, shot) {
+  const references = new Map()
+  for (const { id, name, voiceAssetId } of shotSpeakers(doc, shot)) {
+    if (!voiceAssetId) continue
+    const asset = doc.assets.find((item) => item.id === voiceAssetId)
+    if (!asset) continue
+    if (!references.has(asset.id))
+      references.set(asset.id, { assetId: asset.id, duration: asset.duration, speakers: [] })
+    references.get(asset.id).speakers.push({ cardId: id, name })
+  }
+  return [...references.values()]
+}
+
 /** 按两个字段的原文记录审核版本；长度前缀可区分正文与对白的任意组合。 */
 function scriptVersion(shot) {
   const prompt = shot.prompt || ''

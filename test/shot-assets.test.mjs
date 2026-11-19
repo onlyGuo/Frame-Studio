@@ -6,9 +6,50 @@ import {
   inspectShotAssets,
   setShotAssetFree,
   shotReferenceImages,
+  shotVoiceReferences,
   linkNamedCard,
   applyUnavailableImages
 } from '../shared/shot-assets.mjs'
+import { clipFromShot } from '../shared/rough-cut.mjs'
+import { prepareMediaTarget, commitMediaTarget, videoTargetChanged } from '../shared/shot-media.mjs'
+
+test('角色样音随实际说话人跨服饰复用，换样音后在途视频不会覆盖分镜', () => {
+  const doc = makeProject('双人对白')
+  const [first, second, silent] = ['first', 'second', 'silent'].map((id) => ({
+    id,
+    kind: 'audio',
+    ext: '.wav',
+    name: id,
+    duration: 4
+  }))
+  doc.assets.push(first, second, silent)
+  doc.cards = [
+    { ...makeCard(), id: 'lin', name: '林舟', voiceAssetId: first.id },
+    { ...makeCard(), id: 'lan', name: '阿岚', voiceAssetId: second.id },
+    { ...makeCard(), id: 'li', name: '老李', voiceAssetId: silent.id }
+  ]
+  const shot = {
+    ...makeShot(),
+    prompt: mentionToken('li') + '在旁边听。',
+    dialogue: mentionToken('lan', 'default') + '：老李说过别开门。林舟：我知道。'
+  }
+  doc.episodes[0].shots.push(shot)
+  assert.deepEqual(
+    shotVoiceReferences(doc, shot).map(({ assetId }) => assetId),
+    ['second', 'first']
+  )
+  assert.equal(
+    clipFromShot(shot, { id: 'video', duration: 5 }, doc.cards).caption,
+    '阿岚：老李说过别开门。林舟：我知道。'
+  )
+  const videoTarget = prepareMediaTarget(doc, 'video', { shotId: shot.id })
+  const audioTarget = prepareMediaTarget(doc, 'audio', { cardId: 'lin' })
+  assert.deepEqual(commitMediaTarget(doc, silent, audioTarget), { cardId: 'lin' })
+  assert.ok(videoTargetChanged(doc, videoTarget))
+  assert.ok(commitMediaTarget(doc, first, audioTarget).warning)
+  assert.equal(doc.cards[0].voiceAssetId, 'silent')
+  assert.doesNotThrow(() => validateProject(doc))
+})
 
 test('无资产只对核对过的画面和对白生效，画外音不产生出镜角色', () => {
   const doc = makeProject('转场')

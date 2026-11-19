@@ -20,7 +20,7 @@ export async function fail(stage, reason, status) {
   await fs.writeFile(input.output + '.diagnostic', JSON.stringify({ stage, reason, status }))
   throw Error('媒体服务请求失败')
 }
-async function checkedFetch(url, options, stage) {
+export async function checkedFetch(url, options, stage) {
   let response
   try {
     response = await fetch(url, options)
@@ -49,18 +49,18 @@ export async function request(route, body, headers = {}, timeout = 90000) {
   )
   return res.json()
 }
-export async function download(url) {
+export async function download(url, options = {}) {
   if (!['https:', 'http:'].includes(new URL(url).protocol)) throw Error('无效的下载地址')
-  const res = await checkedFetch(url, { signal: AbortSignal.timeout(300000) }, 'download')
+  const res = await checkedFetch(url, { signal: AbortSignal.timeout(300000), ...options }, 'download')
   await pipeline(Readable.fromWeb(res.body), createWriteStream(input.output))
 }
 export const saveBytes = (data) => fs.writeFile(input.output, Buffer.from(data, 'base64'))
 /** 厂商返回终态或超时即退出，不重复提交计费任务。 */
-export async function poll(check) {
+export async function poll(check, save = download) {
   for (let i = 0; i < 180; i++) {
     const url = await check()
-    if (url) return download(url)
+    if (url) return save(url)
     await setTimeout(5000)
   }
-  throw Error('生成任务超时')
+  return fail('poll', 'timeout')
 }

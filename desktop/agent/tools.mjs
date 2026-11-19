@@ -9,6 +9,8 @@ import fs from 'node:fs'
 import { runCommandGroup, runLegacyCommand } from '../services/command-group.mjs'
 import { decodeReferenceImage } from '../services/media.mjs'
 import { hasProjectImage, inspectProjectShotAssets, verifyVideoFiles } from '../services/shot-assets.mjs'
+import { shotVoiceReferences } from '../../shared/shot-assets.mjs'
+import { supportsReferenceAudio } from '../core/video-inputs.mjs'
 const string = { type: 'string' },
   num = { type: 'number' }
 const mediaKind = { type: 'string', enum: ['image', 'video', 'audio'] }
@@ -58,6 +60,8 @@ const commandStep = object({
   provider: string,
   extension: string,
   prompt: string,
+  sampleText: { type: 'string', description: '角色样音使用的短试听台词。' },
+  voiceId: { type: 'string', description: '复用指定 MiniMax Speech 音色时提供的音色 ID。' },
   duration: num,
   regenerate: { type: 'boolean' },
   ...mediaTarget
@@ -239,10 +243,16 @@ export async function executeTool(name, args, ctx) {
         let videoModel
         try {
           const selected = skills.resolveMedia('video', args.skillId)
-          videoModel = { skillId: selected.id, model: selected.model }
+          videoModel = {
+            skillId: selected.id,
+            model: selected.model,
+            referenceAudio: Boolean(
+              selected.builtin && supportsReferenceAudio(selected.provider, selected.model)
+            )
+          }
           if (report.ready) {
-            const images = skills.preflightVideo(project, selected, { episodeId: e.id, shotId: shot.id })
-            await verifyVideoFiles(images, signal)
+            const media = skills.preflightVideo(project, selected, { episodeId: e.id, shotId: shot.id })
+            await verifyVideoFiles(media, signal)
           }
         } catch (error) {
           signal?.throwIfAborted()
@@ -260,6 +270,7 @@ export async function executeTool(name, args, ctx) {
           shotId: shot.id,
           title: shot.title,
           videoModel,
+          voiceReferences: shotVoiceReferences(d, shot),
           ...report,
           issues: assetIssueActions(report.issues)
         }
@@ -318,15 +329,17 @@ export async function executeTool(name, args, ctx) {
             ...row,
             cards: d.cards.flatMap((c) =>
               c.type === '角色'
-                ? roleOutfits(c)
-                    .filter((o) => o.assetId === row.id)
-                    .map((o) => ({
-                      id: c.id,
-                      name: c.name,
-                      type: c.type,
-                      outfitId: o.id,
-                      outfitName: o.name
-                    }))
+                ? c.voiceAssetId === row.id
+                  ? [{ id: c.id, name: c.name, type: c.type, usage: 'voice' }]
+                  : roleOutfits(c)
+                      .filter((o) => o.assetId === row.id)
+                      .map((o) => ({
+                        id: c.id,
+                        name: c.name,
+                        type: c.type,
+                        outfitId: o.id,
+                        outfitName: o.name
+                      }))
                 : c.assetId === row.id
                   ? [{ id: c.id, name: c.name, type: c.type }]
                   : []
@@ -383,7 +396,7 @@ export async function executeTool(name, args, ctx) {
       const next = structuredClone(project.data)
       const episode = next.episodes.find((e) => e.id === (args.episodeId || ctx.episodeId))
       if (!episode) throw Error('请选择有效分集')
-      const { clips, ...status } = roughCut(episode, next.assets)
+      const { clips, ...status } = roughCut(episode, next.assets, next.cards)
       if (status.added || status.linked) {
         episode.clips = clips
         project.save(next)

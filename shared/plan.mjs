@@ -7,7 +7,7 @@ import { bindSettingImage, settingImage } from './outfits.mjs'
 /** 白名单限制智能体能够修改的创作字段；文件路径、凭据和执行命令均在协议之外。 */
 const specs = {
   project: ['title', 'ratio', 'quality', 'fps', 'synopsis'],
-  cards: ['name', 'type', 'notes', 'assetId', 'outfits', 'defaultOutfitId'],
+  cards: ['name', 'type', 'notes', 'assetId', 'outfits', 'defaultOutfitId', 'voiceAssetId'],
   episodes: ['title', 'script'],
   shots: ['title', 'prompt', 'dialogue', 'duration', 'assetId', 'referenceId', 'assetFree'],
   clips: ['assetId', 'trim', 'duration', 'volume', 'caption', 'sourceShotId'],
@@ -41,6 +41,7 @@ function editCard(card, fields) {
     delete card.outfits
     delete card.defaultOutfitId
   }
+  if (changes.type && changes.type !== '角色') delete card.voiceAssetId
   Object.assign(card, changes)
   if (Object.hasOwn(fields, 'assetId')) bindSettingImage(card, assetId)
 }

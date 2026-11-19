@@ -195,12 +195,44 @@ function renderPrompt(values, profile, source, dialogue) {
       value =
         source.references
           .map((ref) => ref.subject + ' is visually grounded in ' + ref.picture + '.')
+          .concat(source.voiceBindings || [])
           .join('\n') +
         '\n' +
         value
     return profile.headings ? key + ': ' + value : value
   })
-  return [profile.prefix, ...sections].filter(Boolean).join('\n\n')
+  return [profile.prefix, ...(!h3 ? source.voiceBindings || [] : []), ...sections]
+    .filter(Boolean)
+    .join('\n\n')
+}
+
+/** 主进程按真实上传顺序绑定说话人和音频编号，整理模型无需猜测或重排。 */
+function voiceBindings(audioReferences, subjects, h3) {
+  return audioReferences.flatMap(({ speakers }, index) =>
+    speakers.map(({ cardId, name }) => {
+      const labels = subjects.flatMap((ref, n) =>
+        ref.subjects?.some((item) => item.cardId === cardId)
+          ? [h3 ? '<Subject ' + (n + 1) + '>' : '图' + (n + 1)]
+          : []
+      )
+      if (h3)
+        return (
+          '<Audio ' +
+          (index + 1) +
+          '> is the voice-timbre reference for ' +
+          (labels.join(' and ') || name) +
+          '. Generate the scripted dialogue with that timbre.'
+        )
+      return (
+        (labels.length ? labels.join('、') + '中的' : '') +
+        '角色「' +
+        name +
+        '」音色参考 音频' +
+        (index + 1) +
+        '，按本镜对白演绎。'
+      )
+    })
+  )
 }
 
 /** 模型没有通过校验时修正一次，仍失败则在提交视频任务前返回清楚的错误。 */
@@ -208,8 +240,13 @@ export async function formatVideoPrompt(settings, skill, directory, spec, signal
   const protocol = settings.data.llm
   const cfg = settings.credentials(protocol)
   const model = selectedModel || skill.id
-  const input = videoPromptInput(skill.provider, model, spec.references)
-  const profile = readProfile(skill, directory, model, input.mode)
+  const input = videoPromptInput(skill.provider, model, spec.references, spec.audioReferences)
+  const profile = readProfile(
+    skill,
+    directory,
+    skill.provider === 'vllm-h3' ? 'MiniMax-H3' : model,
+    input.mode
+  )
   const { dialogue, performanceNotes } = splitPerformanceNotes(spec.dialogue)
   const source = {
     skill: skill.id,
@@ -270,7 +307,8 @@ export async function formatVideoPrompt(settings, skill, directory, spec, signal
       if (calls.length !== 1 || calls[0].name !== tool.name) throw Error('请使用格式整理工具返回本镜字段。')
       const args = typeof calls[0].input === 'string' ? JSON.parse(calls[0].input) : calls[0].input
       const fields = validateFields(args, profile, source)
-      const prompt = renderPrompt(fields, profile, source, dialogue)
+      const bindings = voiceBindings(spec.audioReferences || [], input.subjects, profile.style === 'h3')
+      const prompt = renderPrompt(fields, profile, { ...source, voiceBindings: bindings }, dialogue)
       if (prompt.length > 30000 || redact(prompt) !== prompt) throw Error('提示词超长或含有配置凭据。')
       return prompt
     } catch (err) {

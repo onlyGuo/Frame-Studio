@@ -1,6 +1,7 @@
 <script setup vapor>
 import { computed, ref, watch } from 'vue'
-import { setShotAssetFree } from '../../../shared/shot-assets.mjs'
+import { setShotAssetFree, shotReferenceImages, shotVoiceReferences } from '../../../shared/shot-assets.mjs'
+import { supportsReferenceAudio } from '../../../resources/skills/_lib/video-inputs.mjs'
 import { makeCard } from '../../../shared/model.mjs'
 import { mentionToken } from '../../../shared/mentions.mjs'
 import { doc, edit, ui } from '../../store.js'
@@ -38,6 +39,16 @@ const report = computed(() => inspectVisibleShot(doc.value, subject.value))
 const modelIssue = computed(() =>
   videoModelIssue(doc.value, subject.value, report.value, props.service, ui.config)
 )
+const voices = computed(() => shotVoiceReferences(doc.value, subject.value))
+const supportsVoices = computed(
+  () =>
+    props.service?.builtin &&
+    supportsReferenceAudio(props.service.provider, ui.config.profiles[props.service.provider]?.model)
+)
+const looseFirstFrame = computed(() => {
+  const images = shotReferenceImages(doc.value, subject.value, report.value)
+  return images.length === 1 && images[0].type === '分镜参考'
+})
 watch(
   [() => props.modelValue, () => props.destination],
   () => {
@@ -146,4 +157,11 @@ function createCard() {
     @confirm="confirm"
     @reference="reference"
   />
+  <p v-if="voices.length && supportsVoices" class="hint">
+    参考音色 · {{ voices.flatMap((ref) => ref.speakers.map((speaker) => speaker.name)).join('、') }}
+    <template v-if="looseFirstFrame">。带样音时，底图作为画面参考。</template>
+  </p>
+  <p v-else-if="voices.length && service" class="hint">
+    当前视频服务会直接生成对白。选择支持参考音频的型号可使用角色样音。
+  </p>
 </template>

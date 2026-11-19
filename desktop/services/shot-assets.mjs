@@ -2,10 +2,11 @@ import {
   inspectShotAssets,
   setShotAssetFree,
   shotReferenceImages,
+  shotVoiceReferences,
   applyUnavailableImages
 } from '../../shared/shot-assets.mjs'
-import { validateVideoInputs } from '../core/video-inputs.mjs'
-import { decodeReferenceImage, hasImageHeader } from './media.mjs'
+import { supportsReferenceAudio, validateVideoInputs } from '../core/video-inputs.mjs'
+import { decodeReferenceImage, probeVoiceSample, hasImageHeader } from './media.mjs'
 import { resolveMentions } from '../../shared/mentions.mjs'
 
 /** 只接受工程内可读的普通图片文件，验证文件签名，避免将扩展名当作实图。 */
@@ -55,6 +56,8 @@ export function prepareVideoInput(project, target, input, skill) {
       issues: report.issues
     })
   const references = shotReferenceImages(doc, shot, report)
+  const audioReferences =
+    !skill.custom && supportsReferenceAudio(skill.provider, skill.model) ? shotVoiceReferences(doc, shot) : []
   if (skill.custom && references.length > (skill.maxReferenceImages || 0)) {
     const issue = {
       code: 'reference_limit',
@@ -69,7 +72,7 @@ export function prepareVideoInput(project, target, input, skill) {
   }
   if (skill.provider && !skill.custom) {
     try {
-      validateVideoInputs(skill.provider, skill.model, references)
+      validateVideoInputs(skill.provider, skill.model, references, audioReferences)
     } catch (err) {
       throw Object.assign(err, { issues: [{ code: err.code, message: err.message }] })
     }
@@ -90,6 +93,15 @@ export function prepareVideoInput(project, target, input, skill) {
     prompt,
     visual,
     dialogue,
+    ...(audioReferences.length
+      ? {
+          audioReferences: audioReferences.map((ref) => ({
+            ...ref,
+            kind: 'audio',
+            path: voicePath(project, ref)
+          }))
+        }
+      : {}),
     references: references.map((r) => ({
       ...r,
       path: project.assetPath(doc.assets.find((a) => a.id === r.assetId))
@@ -97,9 +109,38 @@ export function prepareVideoInput(project, target, input, skill) {
   }
 }
 
-/** 实际解码每份待提交图片，截断文件不能借有效的图片头通过检查。 */
+/** 路径检查失败时定位到角色卡，避免在界面和助手中暴露本机路径。 */
+function voicePath(project, reference) {
+  try {
+    return project.assetPath(project.data.assets.find((asset) => asset.id === reference.assetId))
+  } catch {
+    throw voiceFileError(reference)
+  }
+}
+
+function voiceFileError(reference) {
+  const issues = reference.speakers.map(({ cardId, name }) => ({
+    code: 'voice_file',
+    cardId,
+    assetId: reference.assetId,
+    message: '角色「' + name + '」的样音无法读取、解码或超过 15 MB，请重新绑定。'
+  }))
+  return Object.assign(Error(issues.map((issue) => issue.message).join('\n')), { issues })
+}
+
+/** 实际解码每份待提交图片和样音，检查截断或损坏的文件。 */
 export async function verifyVideoFiles(references, signal) {
   for (const reference of references) {
+    if (reference.kind === 'audio') {
+      try {
+        if ((await probeVoiceSample(reference.path, signal)) !== reference.duration)
+          throw Error('样音与工程登记时长不同')
+      } catch {
+        signal?.throwIfAborted()
+        throw voiceFileError(reference)
+      }
+      continue
+    }
     try {
       await decodeReferenceImage(reference.path, signal)
     } catch {

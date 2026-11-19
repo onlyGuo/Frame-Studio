@@ -45,7 +45,8 @@ test('同一 H3 Skill 整理手动与 Agent 制片，按模式发送原对白和
   const fixtureFiles = {
     portrait: path.join(dir, 'red.png'),
     travel: path.join(dir, 'blue.png'),
-    video: path.join(dir, 'test.mp4')
+    video: path.join(dir, 'test.mp4'),
+    voice: path.join(dir, 'voice.wav')
   }
   for (const [name, color] of [
     ['portrait', 'red'],
@@ -63,16 +64,73 @@ test('同一 H3 Skill 整理手动与 Agent 制片，按模式发送原对白和
       fixtureFiles[name]
     ])
   const bytes = await fs.readFile(fixtureFiles.video)
+  execFileSync(ffmpegPath, [
+    '-loglevel',
+    'error',
+    '-f',
+    'lavfi',
+    '-i',
+    'sine=frequency=220',
+    '-t',
+    '4',
+    fixtureFiles.voice
+  ])
+  const voiceBytes = await fs.readFile(fixtureFiles.voice)
   const travelBytes = await fs.readFile(fixtureFiles.travel)
   const submissions = [],
     inputs = [],
-    problems = []
+    problems = [],
+    localRequests = [],
+    wanRequests = [],
+    voiceUploads = []
   let breakFormat = false
   const server = http.createServer(async (req, res) => {
-    let data = ''
-    for await (const chunk of req) data += chunk
+    const chunks = []
+    for await (const chunk of req) chunks.push(chunk)
+    const body = Buffer.concat(chunks)
+    const data = body.toString()
     const reply = (body) => res.setHeader('content-type', 'application/json').end(JSON.stringify(body))
     try {
+      if (req.url.startsWith('/local/v1/videos')) {
+        assert.equal(req.headers.authorization, 'Bearer private-local-key')
+        if (req.method === 'POST') {
+          const form = await new Response(body, {
+            headers: { 'content-type': req.headers['content-type'] }
+          }).formData()
+          localRequests.push(form)
+          return reply({ id: 'local-test' })
+        }
+        if (req.url.endsWith('/content')) return res.end(bytes)
+        return reply({ status: 'completed' })
+      }
+      if (req.url === '/wan/api/v1/uploads?action=getPolicy&model=wan3.0-video') {
+        assert.equal(req.headers.authorization, 'Bearer private-wan-key')
+        return reply({
+          data: {
+            upload_host: base + '/oss',
+            upload_dir: 'dashscope-instant/test',
+            policy: 'test-policy',
+            signature: 'test-signature',
+            oss_access_key_id: 'test-oss-key',
+            x_oss_object_acl: 'private',
+            x_oss_forbid_overwrite: 'true'
+          }
+        })
+      }
+      if (req.url === '/oss') {
+        assert.equal(req.headers.authorization, undefined)
+        voiceUploads.push(
+          await new Response(body, { headers: { 'content-type': req.headers['content-type'] } }).formData()
+        )
+        return res.end()
+      }
+      if (req.url === '/wan/api/v1/services/aigc/video-generation/video-synthesis') {
+        assert.equal(req.headers['x-dashscope-ossresourceresolve'], 'enable')
+        wanRequests.push(JSON.parse(data))
+        return reply({ output: { task_id: 'wan-test' } })
+      }
+      if (req.url === '/wan/api/v1/tasks/wan-test')
+        return reply({ output: { task_status: 'SUCCEEDED', video_url: base + '/video.mp4' } })
       if (req.url === '/video.mp4') {
         assert.equal(req.headers.authorization, undefined)
         return res.end(bytes)
@@ -94,6 +152,8 @@ test('同一 H3 Skill 整理手动与 Agent 制片，按模式发送原对白和
       const tool = request.tools[0].function || request.tools[0]
       assert.equal(tool.name, 'return_video_prompt')
       assert.doesNotMatch(data, /白鼠狼|不会发给整理模型的原台词|private-media-key|红色常服|private-episode/)
+      if (source.skill === 'aliyun-video')
+        return reply(formattedReply(protocol, { visual: '图1中的人物走向门口。\n[[DIALOGUE]]' }))
       const rules = request.system || request.instructions || request.messages[0].content
       assert.match(rules, /4\.4 Speakers, Dialogue, and Singing|H3 prompt construction in Frame Studio/)
       if (source.mode === 'references') assert.match(rules, /retention_analysis/)
@@ -144,11 +204,15 @@ test('同一 H3 Skill 整理手动与 Agent 制片，按模式发送原对白和
     key: 'private-media-key'
   })
   const project = Project.create(dir, '制片测试')
-  const [portrait, travel] = await project.addMedia([fixtureFiles.portrait, fixtureFiles.travel], probe)
+  const [portrait, travel, voice] = await project.addMedia(
+    [fixtureFiles.portrait, fixtureFiles.travel, fixtureFiles.voice],
+    probe
+  )
   const actor = {
     ...makeCard(),
     name: '阿荷',
     notes: '远处的村民大喊白鼠狼终于走了。',
+    voiceAssetId: voice.id,
     outfits: [
       { id: 'regular', name: '红色常服', notes: '', assetId: portrait.id },
       { id: 'travel', name: '旅行服', notes: '', assetId: travel.id }
@@ -189,14 +253,20 @@ test('同一 H3 Skill 整理手动与 Agent 制片，按模式发送原对白和
   await skills.generate(project, 'minimax-video', { episodeId: episode.id, shotId: refShot.id }, signal)
   assert.equal(submissions[0].model, 'MiniMax-H3')
   assert.equal(submissions[0].duration, 5)
-  assert.equal(submissions[0].content.length, 2)
-  const [promptItem, image] = submissions[0].content
+  assert.equal(submissions[0].content.length, 3)
+  const [promptItem, image, audio] = submissions[0].content
   assert.deepEqual(image, {
     type: 'image_url',
     role: 'reference_image',
     image_url: { url: 'data:image/png;base64,' + travelBytes.toString('base64') }
   })
   assert.match(promptItem.text, /^subject_definitions: <Subject 1> is visually grounded in <Picture 1>/)
+  assert.match(promptItem.text, /<Audio 1> is the voice-timbre reference for <Subject 1>/)
+  assert.deepEqual(audio, {
+    type: 'audio_url',
+    role: 'reference_audio',
+    audio_url: { url: 'data:audio/wav;base64,' + voiceBytes.toString('base64') }
+  })
   assert.match(promptItem.text, /detailed_description: \[Shot 1\].*travel outfit/)
   assert.match(promptItem.text, /<Subject 1> says: <d>\[Chinese\] 不会发给整理模型的原台词。<\/d>/)
   assert.match(
@@ -239,12 +309,49 @@ test('同一 H3 Skill 整理手动与 Agent 制片，按模式发送原对白和
     ]
   )
 
+  settings.update({
+    id: 'vllm-h3',
+    model: 'custom-h3',
+    url: base + '/local/v1',
+    key: 'private-local-key'
+  })
+  assert.equal(settings.view().profiles['vllm-h3'].steps, 10)
+  await skills.generate(project, 'vllm-h3', { episodeId: episode.id, shotId: refShot.id }, signal)
+  const form = localRequests[0]
+  assert.equal(form.get('model'), 'custom-h3')
+  assert.equal(form.get('num_inference_steps'), '10')
+  assert.deepEqual(JSON.parse(form.get('extra_params')), { task: 'ref2va', duration: 5 })
+  assert.match(form.get('prompt'), /<Audio 1> is the voice-timbre reference for <Subject 1>/)
+  const files = form.getAll('input_references')
+  assert.deepEqual(
+    files.map((file) => file.type),
+    ['image/png', 'audio/wav']
+  )
+  assert.deepEqual(Buffer.from(await files[0].arrayBuffer()), travelBytes)
+  assert.deepEqual(Buffer.from(await files[1].arrayBuffer()), voiceBytes)
+
+  settings.update({
+    id: 'aliyun-video',
+    model: 'wan3.0-video',
+    url: base + '/wan/api/v1',
+    key: 'private-wan-key'
+  })
+  await skills.generate(project, 'aliyun-video', { episodeId: episode.id, shotId: refShot.id }, signal)
+  const upload = voiceUploads[0]
+  assert.equal(upload.get('x-oss-object-acl'), 'private')
+  assert.deepEqual(Buffer.from(await upload.get('file').arrayBuffer()), voiceBytes)
+  assert.deepEqual(wanRequests[0].input.media[1], {
+    type: 'reference_audio',
+    url: 'oss://' + upload.get('key')
+  })
+  assert.match(wanRequests[0].input.prompt, /图1中的角色「阿荷」音色参考 音频1/)
+
   breakFormat = true
   await assert.rejects(
     skills.generate(project, 'minimax-video', { episodeId: episode.id, shotId: refShot.id }, signal),
     /对白.*占位符/
   )
-  assert.equal(inputs.length, 5)
+  assert.equal(inputs.length, 6)
   assert.equal(submissions.length, 3)
   assert.deepEqual(problems, [])
   const ref = await executeTool(

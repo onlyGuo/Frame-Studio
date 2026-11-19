@@ -31,8 +31,8 @@ function execute(args, signal, inspection = false) {
   })
 }
 /** 仅使用本地文件协议，并拒绝无法解码的媒体。 */
-async function inspect(file, kind) {
-  const log = await execute(['-protocol_whitelist', 'file,pipe', '-i', file], undefined, true)
+async function inspect(file, kind, signal) {
+  const log = await execute(['-protocol_whitelist', 'file,pipe', '-i', file], signal, true)
   const audio = /Stream #.*Audio:/.test(log)
   const video = /Stream #.*Video:/.test(log)
   if (kind === 'audio' ? !audio : !video) throw Error('无法读取素材流')
@@ -41,7 +41,42 @@ async function inspect(file, kind) {
   if (kind !== 'image' && !duration) throw Error('无法读取素材时长')
   return { audio, duration: kind === 'image' ? 0 : duration }
 }
-export const probe = async (file, kind) => (await inspect(file, kind)).duration
+export const probe = async (file, kind, signal) => (await inspect(file, kind, signal)).duration
+
+/** 校验样音原件体积、流和容器，返回用于绑定及预检的实际秒数。 */
+export async function probeVoiceSample(file, signal) {
+  const stat = await fs.stat(file)
+  const format = path.extname(file).slice(1).toLowerCase()
+  if (!['wav', 'mp3'].includes(format) || !stat.isFile() || stat.size > 15_000_000)
+    throw Error('角色样音须为不超过 15 MB 的 WAV 或 MP3 文件')
+  const duration = await probe(file, 'audio', signal)
+  if (duration < 2 || duration > 15) throw Error('角色样音须为 2–15 秒')
+  await execute(
+    [
+      '-v',
+      'error',
+      '-xerror',
+      '-protocol_whitelist',
+      'file,pipe',
+      '-f',
+      format,
+      '-i',
+      file,
+      '-map',
+      '0:a:0',
+      '-t',
+      '16',
+      '-f',
+      'null',
+      '-'
+    ],
+    signal
+  ).catch(() => {
+    signal?.throwIfAborted()
+    throw Error('无法解码样音，请选择有效的 WAV 或 MP3 文件')
+  })
+  return duration
+}
 
 /** 按真实文件头识别工程允许的图片格式；无法读取时同样返回不可用。 */
 export function hasImageHeader(pathname, ext) {

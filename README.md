@@ -160,7 +160,7 @@ description: 核对本集分镜的场景、服饰与参考图。
 <details>
 <summary>MiniMax H3 · 本地使用原版参考</summary>
 
-公开构建自带[英文关键帧规则](resources/skills/minimax-video/references/h3-keyframes-en.md)与[英文全参考规则](resources/skills/minimax-video/references/h3-reference-en.md)。如已按 MiniMax 的许可取得完整 [h3-prompt-writing](https://github.com/MiniMax-AI/MiniMax-H3/tree/199b7d0e1fd95e7b3eafa8c15eca692534142427/skills/h3-prompt-writing)，可将该目录放入 `~/.ai-video-studio/skills/builtin/minimax-video/`。保留原来的 `SKILL.md` 和 `references/base-en.txt`、`references/ref-en.txt`。所需文件齐备时，工作室会优先使用该模式的本地原文。仓库和公开安装包使用独立编写的规则。
+公开构建自带[英文关键帧规则](resources/skills/minimax-video/references/h3-keyframes-en.md)与[英文全参考规则](resources/skills/minimax-video/references/h3-reference-en.md)。如已按 MiniMax 的许可取得完整 [h3-prompt-writing](https://github.com/MiniMax-AI/MiniMax-H3/tree/199b7d0e1fd95e7b3eafa8c15eca692534142427/skills/h3-prompt-writing)，可将该目录放入 `~/.framestudio/skills/builtin/minimax-video/`。保留原来的 `SKILL.md` 和 `references/base-en.txt`、`references/ref-en.txt`。所需文件齐备时，工作室会优先使用该模式的本地原文。仓库和公开安装包使用独立编写的规则。
 
 </details>
 
@@ -175,7 +175,7 @@ description: 核对本集分镜的场景、服饰与参考图。
 | 工程素材文件被移动         | 打开「素材库」，选择失效条目并用「找回丢失的原图」恢复。                                         |
 | 跨机恢复工程后不能调用模型 | 在目标机重新配置服务。工程包携带工程和媒体，全局模型设置由每台设备单独保存。                     |
 
-应用在 `~/.ai-video-studio` 保存服务配置、启用状态与近期项目。密钥由 Electron `safeStorage` 加密，系统密钥存储后端由操作系统提供。运行媒体命令时凭据在本次子进程的环境里使用。工程包可含剧本、素材、对话及 `work/` 文件，对外分享前检查内容。
+应用在 `~/.framestudio` 保存服务配置、启用状态与近期项目。首次启动时，如果新目录尚不存在，工作室会从 `~/.ai-video-studio` 复制已有配置、提示词、Skill 和桌面设置，旧目录保留备份。密钥由 Electron `safeStorage` 加密，系统密钥存储后端由操作系统提供。运行媒体命令时凭据在本次子进程的环境里使用。工程包可含剧本、素材、对话及 `work/` 文件，对外分享前检查内容。
 
 ```text
 Frame-项目名称/

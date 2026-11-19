@@ -1,7 +1,6 @@
-/* 主工作区保持紧凑；监看和时间线使用独立的深色编辑表面。 */
+/* 页面按实际可用空间布局，侧边助手打开后沿用同样的宽度断点。 */
 .studio-work {
   container-type: inline-size;
-  max-width: 1500px;
 }
 .page.studio-work {
   padding: 24px clamp(16px, 2.4vw, 38px) 36px;
@@ -12,6 +11,10 @@
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 19px;
+  flex-wrap: wrap;
+}
+.studio-page-title .actions {
+  flex-wrap: wrap;
 }
 .studio-work h1,
 .studio-home h1 {
@@ -138,6 +141,19 @@
 }
 .production-panel + .production-panel {
   margin-top: 17px;
+}
+.overview-panels {
+  display: grid;
+  align-items: start;
+  gap: 16px;
+}
+.overview-panels > .production-panel {
+  margin: 0;
+}
+@container (min-width: 1280px) {
+  .overview-panels {
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  }
 }
 .production-panel > header,
 .cut-tools {
@@ -267,7 +283,7 @@
 }
 .shot-console {
   display: grid;
-  grid-template-columns: minmax(195px, 0.82fr) minmax(265px, 1.18fr);
+  grid-template-columns: clamp(195px, 37cqw, 760px) minmax(0, 1fr);
   align-items: start;
   gap: 14px;
 }
@@ -275,7 +291,7 @@
   margin: 0;
 }
 .shot-list {
-  max-height: min(76vh, 840px);
+  max-height: 76dvh;
   overflow: auto;
 }
 .shot-list > header {
@@ -328,7 +344,7 @@
   padding: 15px;
 }
 .story-frame {
-  height: clamp(120px, 20vh, 220px);
+  height: clamp(120px, 27dvh, 480px);
   border-radius: 4px;
 }
 .story-frame span,
@@ -351,9 +367,17 @@
 .studio-work .editor-paper {
   border-radius: 7px;
 }
+.cut-room {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
 .cut-console {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(218px, 28%);
+  grid-template-columns: minmax(0, 1fr) clamp(218px, 28cqw, 420px);
+  grid-template-rows: minmax(0, 1fr);
+  flex: 1 0 0;
+  min-height: 295px;
   border: 1px solid var(--edge);
   border-radius: 8px;
   overflow: hidden;
@@ -367,6 +391,7 @@
 }
 .program-monitor > header {
   display: flex;
+  flex: none;
   justify-content: space-between;
   align-items: center;
   padding: 11px 14px;
@@ -397,8 +422,7 @@
   font-variant-numeric: tabular-nums;
 }
 .program-monitor .monitor-surface {
-  height: clamp(170px, 33vh, 390px);
-  min-height: 170px;
+  min-height: 0;
   flex: 1;
   position: relative;
   container-type: size;
@@ -436,6 +460,7 @@
 }
 .monitor-controls {
   display: flex;
+  flex: none;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
@@ -492,7 +517,7 @@
   min-width: 0;
   background: var(--surface);
   border-left: 1px solid var(--edge);
-  height: clamp(275px, 43vh, 475px);
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
@@ -500,7 +525,7 @@
   display: flex;
   flex: none;
   border-bottom: 1px solid var(--line);
-  background: #f0f3eb;
+  background: var(--well);
   padding: 0 6px;
 }
 .cut-inspector > header button {
@@ -625,6 +650,7 @@
   border-radius: 8px;
   overflow: hidden;
   margin-top: 15px;
+  flex: none;
 }
 .cut-tools {
   padding: 7px 12px;
@@ -825,14 +851,19 @@
   .shot-console {
     grid-template-columns: minmax(0, 1fr);
   }
+  .cut-console {
+    flex: none;
+    grid-template-rows: auto auto;
+  }
   .cut-inspector {
-    height: auto;
+    min-height: 150px;
     max-height: 260px;
     border-left: 0;
+    border-top: 1px solid var(--edge);
   }
   .program-monitor .monitor-surface {
     flex: none;
-    height: 190px;
+    height: clamp(180px, 36dvh, 310px);
   }
   .shot-list {
     max-height: 220px;
@@ -860,12 +891,12 @@
 .studio-home .hero.home-hero {
   margin-top: 0;
   margin-bottom: 18px;
-  min-height: 177px;
+  min-height: clamp(177px, 22dvh, 320px);
   border-radius: 8px;
 }
 .home-hero .film-art {
   min-height: 177px;
-  max-height: 200px;
+  max-height: none;
 }
 .home-hero .hero-copy {
   padding: 22px 27px;

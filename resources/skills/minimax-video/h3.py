@@ -1,4 +1,4 @@
-"""MiniMax H3 V2：以一个已整理的提示词和锁定的工程图片提交、查询、下载。"""
+"""MiniMax H3 V2：提交锁定的分镜提示词、图片和角色样音，并下载成片。"""
 
 import base64
 import json
@@ -56,20 +56,33 @@ def generate(job, model, fail):
             fail(job, "format", stage=stage)
 
     refs = job["references"]
+    audio_refs = job.get("audioReferences", [])
     mode = job["inputMode"]
     if not (mode == "text" and not refs or
             mode == "first-frame" and len(refs) == 1 and refs[0]["type"] == "分镜参考" or
             mode == "references" and 1 <= len(refs) <= 9):
+        fail(job, "reference_unsupported")
+    if audio_refs and (mode != "references" or len(audio_refs) > 3):
         fail(job, "reference_unsupported")
     duration = job["duration"]
     is_max = model.lower().endswith("-max")
     if type(duration) is not int or not (5 if is_max else 4) <= duration <= 15:
         fail(job, "duration")
     # 先核对编码体积上界，避免在主进程检查后才构建出超限请求。
-    if sum(4 * ((Path(ref["path"]).stat().st_size + 2) // 3) for ref in refs) > 64_000_000:
+    if sum(4 * ((Path(ref["path"]).stat().st_size + 2) // 3) for ref in refs + audio_refs) > 64_000_000:
         fail(job, "reference_format")
     role = "first_frame" if mode == "first-frame" else "reference_image"
     content = [{"type": "text", "text": job["prompt"]}] + [image_item(job, ref, role, fail) for ref in refs]
+    for ref in audio_refs:
+        audio = Path(ref["path"])
+        format_name = audio.suffix.lower().lstrip(".")
+        if format_name not in ("wav", "mp3") or audio.stat().st_size > 15_000_000:
+            fail(job, "reference_format")
+        encoded = base64.b64encode(audio.read_bytes()).decode("ascii")
+        content.append({
+            "type": "audio_url", "role": "reference_audio",
+            "audio_url": {"url": f"data:audio/{format_name};base64,{encoded}"},
+        })
     payload = {
         "model": model, "content": content, "resolution": "768P", "duration": duration,
         "ratio": "adaptive" if mode == "first-frame" and not model.lower().endswith("-lite") else job["ratio"],
