@@ -47,6 +47,9 @@ def create_image_task(job, model, frame):
 
 def main():
     """只有当前接口可接收本镜全部图片时才提交任务。"""
+    # 隔离模式会忽略 PYTHONIOENCODING。上游进度日志包含中文提示和路径。
+    if sys.stdout is not None:
+        sys.stdout.reconfigure(encoding="utf-8")
     job = json.load(sys.stdin.buffer)
     model = os.environ["STUDIO_MODEL"]
     if re.fullmatch(r"MiniMax-H3(?:-(?:Highspeed|Lite|Max))?", model, re.IGNORECASE):
