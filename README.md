@@ -19,11 +19,11 @@
 
 ## 安装与配置
 
-| 系统    | 安装包      | 使用方式                                                                                  |
-| ------- | ----------- | ----------------------------------------------------------------------------------------- |
-| macOS   | `.dmg`      | 选择匹配芯片架构的构建，打开磁盘映像后把应用拖到「应用程序」。本地测试包未经 Apple 公证。 |
-| Windows | `.exe`      | 运行 NSIS 安装程序。                                                                      |
-| Linux   | `.AppImage` | 赋予执行权限后启动，或直接从源码运行。                                                    |
+| 系统    | 安装包      | 使用方式                                                                         |
+| ------- | ----------- | -------------------------------------------------------------------------------- |
+| macOS   | `.dmg`      | 从 GitHub Release 下载匹配芯片架构的构建，打开磁盘映像后把应用拖到「应用程序」。 |
+| Windows | `.exe`      | 运行 NSIS 安装程序。                                                             |
+| Linux   | `.AppImage` | 赋予执行权限后启动，或直接从源码运行。                                           |
 
 发布安装包前可以先用[源码启动](#开发与打包)。已打包应用随附 Node、CPython 和 FFmpeg。编辑、导入本地素材及剪辑可离线使用。调用在线模型时需要网络和该服务的凭据。
 
@@ -213,7 +213,17 @@ npm run dev
 
 将 `package.json` 和 `package-lock.json` 更新为发布版本并提交源码后，推送同版本标签（例如 `0.7.2`）。**Desktop builds** 会在三个平台通过测试和打包后发布 GitHub Release，并附上 DMG、EXE 和 AppImage。已经创建 Release 时，工作流会补齐缺少的安装包，保留原发布说明。
 
-给已有标签补传安装包时，在 GitHub Actions 的 **Desktop builds → Run workflow** 选择 `main`，填写 `release_tag`。工作流会从该标签重新构建。留空时只构建并上传到 Actions。
+macOS Release 构建需要在仓库的 **Settings → Secrets and variables → Actions → Repository secrets** 配置以下凭据。工作流用 Developer ID 签名应用和 DMG，提交 DMG 给 Apple 公证，验证公证票据后才允许发布。普通分支构建和本地测试包未经 Apple 公证。
+
+| Secret                        | 内容                                                                                                                                                    |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MAC_CSC_LINK`                | 含私钥的 [Developer ID Application](https://developer.apple.com/help/account/certificates/create-developer-id-certificates) `.p12`，编码为单行 Base64。 |
+| `MAC_CSC_KEY_PASSWORD`        | `.p12` 导出密码。                                                                                                                                       |
+| `APPLE_ID`                    | 有权限进行公证的 Apple 账户邮箱。                                                                                                                       |
+| `APPLE_APP_SPECIFIC_PASSWORD` | 该 Apple 账户专用于公证的 [App 专用密码](https://support.apple.com/102654)。                                                                            |
+| `APPLE_TEAM_ID`               | 证书所属的 Apple Developer Team ID。                                                                                                                    |
+
+给已有标签补传安装包时，在 GitHub Actions 的 **Desktop builds → Run workflow** 选择 `main`，填写 `release_tag`。工作流会从该标签重新构建。勾选 `replace_macos` 可用通过签名和公证校验的 DMG 替换同名旧包。标签留空时只构建并上传到 Actions。
 
 | 目录                | 职责                                           |
 | ------------------- | ---------------------------------------------- |

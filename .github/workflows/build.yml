@@ -9,6 +9,10 @@ on:
         description: '已有版本标签（用于补传安装包，留空只构建）'
         type: string
         required: false
+      replace_macos:
+        description: '用签名并公证的新 DMG 替换该 Release 的 macOS 安装包'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -31,6 +35,12 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      - name: Require a tag when replacing a macOS installer
+        if: inputs.replace_macos && env.RELEASE_TAG == ''
+        shell: bash
+        run: |
+          echo 'Select a release_tag when replacing a macOS installer.'
+          exit 1
       - name: Verify release version
         if: env.RELEASE_TAG != ''
         run: >-
@@ -48,9 +58,58 @@ jobs:
         if: runner.os != 'Linux'
       - run: xvfb-run -a npm run test:desktop
         if: runner.os == 'Linux'
-      - run: npm run dist -- --publish never
+      - name: Build installer
+        if: runner.os != 'macOS' || env.RELEASE_TAG == ''
+        run: npm run dist -- --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Sign macOS release installer
+        if: runner.os == 'macOS' && env.RELEASE_TAG != ''
+        env:
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+        run: |
+          : "${CSC_LINK:?Missing MAC_CSC_LINK (base64 Developer ID Application .p12)}"
+          : "${CSC_KEY_PASSWORD:?Missing MAC_CSC_KEY_PASSWORD}"
+          # 公证票据会改变 DMG 的字节，发布流程只上传最终 DMG。
+          npm run dist -- --publish never \
+            -c.mac.type=distribution -c.mac.hardenedRuntime=true -c.mac.forceCodeSigning=true \
+            -c.mac.notarize=false -c.dmg.sign=true -c.dmg.writeUpdateInfo=false
+      - name: Notarize and verify macOS release installer
+        if: runner.os == 'macOS' && env.RELEASE_TAG != ''
+        shell: bash
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          : "${APPLE_ID:?Missing APPLE_ID}"
+          : "${APPLE_APP_SPECIFIC_PASSWORD:?Missing APPLE_APP_SPECIFIC_PASSWORD}"
+          : "${APPLE_TEAM_ID:?Missing APPLE_TEAM_ID}"
+          shopt -s nullglob
+          images=(release/Frame-Studio-"${RELEASE_TAG#v}"-mac-*.dmg)
+          if (( ${#images[@]} != 1 )); then
+            echo 'Expected exactly one macOS release DMG.'
+            exit 1
+          fi
+          dmg=${images[0]}
+          codesign --verify --strict --verbose=2 \
+            -R='anchor apple generic and certificate leaf[field.1.2.840.113635.100.6.1.13] exists' "$dmg"
+
+          # 按 Apple 的分发流程公证最外层 DMG，并在上传前验证附带的票据。
+          auth=(--apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID")
+          if ! result=$(xcrun notarytool submit "$dmg" "${auth[@]}" --wait --timeout 30m --output-format json) ||
+             ! jq -e '.status == "Accepted"' <<< "$result" >/dev/null; then
+            echo 'Apple notarization did not accept the DMG.'
+            echo "$result"
+            submission=$(jq -r '.id // empty' <<< "$result")
+            if [[ -n "$submission" ]]; then
+              xcrun notarytool log "$submission" "${auth[@]}"
+            fi
+            exit 1
+          fi
+          xcrun stapler staple "$dmg"
+          xcrun stapler validate "$dmg"
       - uses: actions/upload-artifact@v6
         with:
           name: frame-studio-${{ matrix.os }}
@@ -79,6 +138,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          REPLACE_MACOS: ${{ inputs.replace_macos || false }}
         run: |
           shopt -s nullglob
           version="${RELEASE_TAG#v}"
@@ -93,6 +153,10 @@ jobs:
 
           if existing=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets,isDraft); then
             names=$(jq -r '.assets[].name' <<< "$existing")
+            if [[ "$REPLACE_MACOS" == 'true' ]]; then
+              gh release upload "$RELEASE_TAG" "${mac[0]}" --repo "$GITHUB_REPOSITORY" --clobber
+              packages=("${windows[@]}" "${linux[@]}")
+            fi
             missing=()
             for package in "${packages[@]}"; do
               if ! grep -Fxq -- "${package##*/}" <<< "$names"; then
