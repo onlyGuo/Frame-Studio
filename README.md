@@ -211,7 +211,9 @@ npm run dev
 
 ### 准备 GitHub Release
 
-提交源码和文档后，可在 GitHub Actions 运行 **Desktop builds**。从对应平台的成功构建取得安装包，分别在目标系统上试装，再将安装包和变更说明放进同一版本的 Release。仓库的项目许可证由维护者确定，发行包随附的第三方许可与项目许可证分别管理。
+将 `package.json` 和 `package-lock.json` 更新为发布版本并提交源码后，推送同版本标签（例如 `0.7.2`）。**Desktop builds** 会在三个平台通过测试和打包后发布 GitHub Release，并附上 DMG、EXE 和 AppImage。已经创建 Release 时，工作流会补齐缺少的安装包，保留原发布说明。
+
+给已有标签补传安装包时，在 GitHub Actions 的 **Desktop builds → Run workflow** 选择 `main`，填写 `release_tag`。工作流会从该标签重新构建。留空时只构建并上传到 Actions。
 
 | 目录                | 职责                                           |
 | ------------------- | ---------------------------------------------- |

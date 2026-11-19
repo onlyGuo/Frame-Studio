@@ -1,5 +1,21 @@
 name: Desktop builds
-on: [workflow_dispatch, push]
+on:
+  push:
+    branches: ['**']
+    tags: ['[0-9]*.[0-9]*.[0-9]*', 'v[0-9]*.[0-9]*.[0-9]*']
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: '已有版本标签（用于补传安装包，留空只构建）'
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_TAG: ${{ inputs.release_tag || (github.ref_type == 'tag' && github.ref_name) || '' }}
+
 jobs:
   desktop:
     strategy:
@@ -9,10 +25,19 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.release_tag && format('refs/tags/{0}', inputs.release_tag) || github.sha }}
       - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
+      - name: Verify release version
+        if: env.RELEASE_TAG != ''
+        run: >-
+          node -e "const tag = process.env.RELEASE_TAG;
+          if (!/^v?[0-9]+[.][0-9]+[.][0-9]+$/.test(tag) ||
+          tag.replace(/^v/, '') !== require('./package.json').version)
+          throw Error('Release tag must match the version in package.json');"
       - uses: astral-sh/setup-uv@v7
         with:
           cache-dependency-glob: scripts/runtimes.mjs
@@ -34,3 +59,53 @@ jobs:
             release/*.dmg
             release/*.exe
             release/*.AppImage
+
+  release:
+    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
+    needs: desktop
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    concurrency:
+      group: desktop-release-${{ inputs.release_tag || github.ref_name }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: frame-studio-*
+          path: installers
+          merge-multiple: true
+      - name: Publish release installers
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          version="${RELEASE_TAG#v}"
+          mac=(installers/Frame-Studio-"$version"-mac-*.dmg)
+          windows=(installers/Frame-Studio-"$version"-win-*.exe)
+          linux=(installers/Frame-Studio-"$version"-linux-*.AppImage)
+          if (( ${#mac[@]} != 1 || ${#windows[@]} != 1 || ${#linux[@]} != 1 )); then
+            echo "Expected exactly one installer per platform for $RELEASE_TAG."
+            exit 1
+          fi
+          packages=("${mac[@]}" "${windows[@]}" "${linux[@]}")
+
+          if existing=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets,isDraft); then
+            names=$(jq -r '.assets[].name' <<< "$existing")
+            missing=()
+            for package in "${packages[@]}"; do
+              if ! grep -Fxq -- "${package##*/}" <<< "$names"; then
+                missing+=("$package")
+              fi
+            done
+            if (( ${#missing[@]} )); then
+              gh release upload "$RELEASE_TAG" "${missing[@]}" --repo "$GITHUB_REPOSITORY"
+            fi
+            if [[ $(jq -r '.isDraft' <<< "$existing") == true ]]; then
+              gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+            fi
+          else
+            gh release create "$RELEASE_TAG" "${packages[@]}" --repo "$GITHUB_REPOSITORY" \
+              --verify-tag --title "Frame Studio $version" --generate-notes
+          fi
