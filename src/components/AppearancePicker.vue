@@ -1,32 +1,34 @@
 <script setup vapor>
 import { computed } from 'vue'
 import { api, ui, error } from '../store.js'
-import Glyph from './Glyph.vue'
+import StudioSelect from './StudioSelect.vue'
 
 const modes = [
-  { id: 'system', title: '跟随系统', icon: 'display' },
-  { id: 'light', title: '浅色', icon: 'sun' },
-  { id: 'dark', title: '暗色', icon: 'moon' }
+  { value: 'system', label: '跟随系统', icon: 'display' },
+  { value: 'light', label: '浅色', icon: 'sun' },
+  { value: 'dark', label: '暗色', icon: 'moon' }
 ]
-const current = computed(() => modes.find((m) => m.id === ui.config?.appearance) || modes[2])
-/** 应用外观交由 Electron 切换，系统窗口和网页会同时响应。 */
-async function choose(event) {
+const current = computed(() => modes.find((mode) => mode.value === ui.config?.appearance) || modes[2])
+/** 应用外观交由 Electron 切换，系统窗口和工作区同时响应。 */
+async function choose(mode) {
   try {
-    const { mode, dark } = await api.appearance({ mode: event.target.value })
-    ui.config.appearance = mode
-    document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+    const result = await api.appearance({ mode })
+    ui.config.appearance = result.mode
+    document.documentElement.dataset.theme = result.dark ? 'dark' : 'light'
   } catch (err) {
-    event.target.value = current.value.id
     error(err)
   }
 }
 </script>
 <template>
-  <label class="appearance-picker">
-    <Glyph :name="current.icon" :size="17" />
-    <span>外观</span>
-    <select aria-label="外观模式" :value="current.id" :disabled="!ui.config" @change="choose">
-      <option v-for="mode in modes" :key="mode.id" :value="mode.id">{{ mode.title }}</option>
-    </select>
-  </label>
+  <StudioSelect
+    class="appearance-picker"
+    aria-label="外观模式"
+    title="外观模式"
+    :icon="current.icon"
+    :model-value="current.value"
+    :options="modes"
+    :disabled="!ui.config"
+    @update:model-value="choose"
+  />
 </template>

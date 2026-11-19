@@ -1,4 +1,4 @@
-import { computed, reactive, shallowRef } from 'vue'
+import { computed, nextTick, reactive, shallowRef } from 'vue'
 import { reconcile } from '../shared/reconcile.mjs'
 import { validateProject } from '../shared/model.mjs'
 export const api = window.studio
@@ -185,11 +185,21 @@ export async function openProject(method, payload) {
 export async function home() {
   await perform('正在关闭工程', async () => {
     ui.recent = await api.closeProject()
+    ui.page = 'home'
+    // 先卸载仍在监听分集的工作区，再释放工程快照。
+    await nextTick()
     doc.value = null
+    baseDoc = delayedState = null
+    pending = false
+    past.length = future.length = 0
+    counts()
     ui.session = ''
     ui.root = ''
+    ui.episodeId = ''
+    ui.shotId = ''
+    ui.focusCardId = ''
+    ui.offlineImageIds = []
     ui.agentEvents = []
-    ui.page = 'home'
   })
 }
 export async function importMedia(kind) {

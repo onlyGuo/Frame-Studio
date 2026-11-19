@@ -1,6 +1,6 @@
 <script setup vapor>
 import studioIcon from './assets/studio-icon.svg'
-import { computed, ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import {
   ui,
   doc,
@@ -26,6 +26,7 @@ import Workspace from './views/Workspace.vue'
 import Editor from './views/Editor.vue'
 import Dialogs from './components/Dialogs.vue'
 import Assistant from './components/Assistant.vue'
+import StudioSelect from './components/StudioSelect.vue'
 import AppearancePicker from './components/AppearancePicker.vue'
 import { version } from '../package.json'
 const pages = [
@@ -36,13 +37,7 @@ const pages = [
   ['media', 'media', '素材库'],
   ['edit', 'edit', '剪辑台']
 ]
-const title = computed(() => pages.find((p) => p[0] === ui.page)?.[2] || '项目工作台')
-// 工具栏可收起以扩大监看区域，窗口恢复时沿用本机布局。
-const compactNav = ref(localStorage.getItem('studio.compactNav') === '1')
-function toggleNav() {
-  compactNav.value = !compactNav.value
-  localStorage.setItem('studio.compactNav', compactNav.value ? '1' : '0')
-}
+const currentPage = computed(() => pages.find((p) => p[0] === ui.page))
 let offClose,
   offProgress,
   offCaptions,
@@ -64,16 +59,15 @@ async function finishClose() {
 }
 watch(() => [ui.busy, ui.agentRunning, ui.videoBatch?.status], finishClose)
 function key(e) {
-  if (e.defaultPrevented || e.target.closest?.('dialog[open]')) return
+  if (e.defaultPrevented || ui.modal || e.target.closest?.('dialog[open]')) return
   if (e.key === 'Escape') {
     if (!ui.busy) {
       if (ui.error) ui.error = ''
-      else if (ui.modal) ui.modal = ''
       else ui.agent = false
     }
     return
   }
-  if (ui.busy || ui.modal) return
+  if (ui.busy) return
   const section = e.altKey && /^Digit[1-6]$/.test(e.code) && doc.value && pages[Number(e.code.slice(-1)) - 1]
   if (section) {
     e.preventDefault()
@@ -148,157 +142,151 @@ onBeforeUnmount(() => {
 })
 </script>
 <template>
-  <div class="shell" :class="{ 'compact-nav': compactNav }" :inert="!!ui.modal || !!ui.busy">
-    <aside class="sidebar">
-      <div class="brand" title="帧序 Frame Studio">
-        <img class="brand-icon" :src="studioIcon" alt="" />
-        <div class="brand-wordmark">
-          <b>帧序</b>
-          <small>FRAME STUDIO</small>
+  <div class="shell" :inert="!!ui.modal || !!ui.busy">
+    <header class="toolbar">
+      <div class="window-title">
+        <div class="brand" title="帧序 Frame Studio">
+          <img class="brand-icon" :src="studioIcon" alt="" />
+          <span>帧序</span>
+        </div>
+        <div v-if="doc && currentPage" class="window-project">
+          <Glyph name="folder" :size="15" />
+          <b :title="ui.root">{{ doc.title }}</b>
         </div>
       </div>
-      <div class="nav-group">
-        <div class="nav-label">工作空间</div>
-        <button aria-label="项目工作台" title="项目工作台" :class="{ active: !doc }" @click="home">
-          <Glyph name="home" />
-          项目工作台
-        </button>
-      </div>
-      <div v-if="doc" class="nav-group">
-        <div class="nav-label">当前制作</div>
-        <button
-          v-for="(p, i) in pages"
-          :title="p[2] + ' · Alt+' + (i + 1)"
-          :aria-label="p[2]"
-          :key="p[0]"
-          :class="{ active: ui.page === p[0] }"
-          @click="ui.page = p[0]"
+      <div class="actions">
+        <div
+          v-if="ui.videoBatch?.status === 'running'"
+          class="batch-progress"
+          role="status"
+          :title="ui.videoBatch.title + ' · ' + ui.videoBatch.shotTitle"
         >
-          <Glyph :name="p[1]" />
-          {{ p[2] }}
-        </button>
-      </div>
-      <div v-else class="nav-group">
-        <div class="nav-label">项目操作</div>
-        <button title="新建项目" aria-label="新建项目" @click="ui.modal = 'create'">
-          <Glyph name="plus" />
-          新建项目
-        </button>
-        <button title="打开目录" aria-label="打开目录" @click="openProject('open')">
-          <Glyph name="folder" />
-          打开目录
-        </button>
-      </div>
-      <div class="sidebar-bottom">
-        <div class="nav-group">
-          <div class="nav-label">工作室</div>
-          <button title="模型配置" aria-label="模型配置" @click="ui.modal = 'settings'">
-            <Glyph name="settings" />
-            模型配置
-          </button>
-          <button title="Skill 管理" aria-label="Skill 管理" @click="ui.modal = 'skills'">
-            <Glyph name="skill" />
-            Skill 管理
-          </button>
-          <button v-if="doc" title="命令工作台" aria-label="命令工作台" @click="ui.modal = 'command'">
-            <Glyph name="sliders" />
-            命令工作台
-          </button>
-        </div>
-        <div class="local">
-          <i />
-          本地工作室
-          <span>{{ version }}</span>
-        </div>
-      </div>
-    </aside>
-    <div class="main">
-      <header class="toolbar">
-        <div class="crumb">
+          <span class="spinner" />
+          分镜视频 {{ ui.videoBatch.done + ui.videoBatch.skipped }}/{{ ui.videoBatch.total }}
           <button
-            class="nav-toggle"
-            :title="compactNav ? '展开导航' : '收起导航'"
-            :aria-label="compactNav ? '展开导航' : '收起导航'"
-            @click="toggleNav"
+            @click="api.cancelVideoBatch({ id: ui.videoBatch.id })"
+            aria-label="停止分镜批量生成"
+            title="停止生成"
           >
-            <Glyph name="panel" :size="17" />
+            <Glyph name="x" :size="13" />
           </button>
-          <Glyph name="folder" :size="16" />
-          <button @click="home">工作室</button>
-          <span>/</span>
-          <b :title="ui.root">{{ doc?.title || '项目工作台' }}</b>
-          <template v-if="doc">
-            <span>/</span>
-            {{ title }}
-          </template>
         </div>
-        <div class="actions">
-          <div
-            v-if="ui.videoBatch?.status === 'running'"
-            class="batch-progress"
-            role="status"
-            :title="ui.videoBatch.title + ' · ' + ui.videoBatch.shotTitle"
-          >
-            <span class="spinner" />
-            分镜视频 {{ ui.videoBatch.done + ui.videoBatch.skipped }}/{{ ui.videoBatch.total }}
+        <template v-if="doc && currentPage">
+          <div class="toolbar-group">
             <button
-              @click="api.cancelVideoBatch({ id: ui.videoBatch.id })"
-              aria-label="停止分镜批量生成"
-              title="停止生成"
+              class="icon"
+              :disabled="!history.back"
+              title="撤销"
+              aria-label="撤销"
+              @click="travel(false)"
             >
-              <Glyph name="x" :size="13" />
+              <Glyph name="undo" :size="16" />
+            </button>
+            <button
+              class="icon"
+              :disabled="!history.forward"
+              title="重做"
+              aria-label="重做"
+              @click="travel(true)"
+            >
+              <Glyph name="redo" :size="16" />
+            </button>
+            <button class="icon" title="工程包" aria-label="工程包" @click="archive">
+              <Glyph name="up" :size="16" />
             </button>
           </div>
-          <AppearancePicker />
-          <template v-if="doc">
-            <button class="icon" :disabled="!history.back" title="撤销" @click="travel(false)">
-              <Glyph name="undo" :size="15" />
-            </button>
-            <button class="icon" :disabled="!history.forward" title="重做" @click="travel(true)">
-              <Glyph name="redo" :size="15" />
-            </button>
-            <button class="outline" @click="archive">
-              <Glyph name="up" :size="15" />
-              工程包
-            </button>
-          </template>
-          <button class="assist-btn" :class="{ on: ui.agent }" @click="ui.agent = !ui.agent">
-            <Glyph name="spark" />
-            创作助手
-            <i v-if="ui.agentRunning" class="run-light" aria-label="执行中" />
-          </button>
-        </div>
-      </header>
-      <div v-if="doc" class="project-strip">
-        <label class="inline">
-          当前分集
-          <select :value="episode?.id" @change="ui.episodeId = $event.target.value">
-            <option v-for="e in doc.episodes" :key="e.id" :value="e.id">{{ e.title }}</option>
-          </select>
-        </label>
-        <div class="project-status">
-          <button class="format-settings" title="工程输出设置" @click="ui.modal = 'project'">
-            {{ doc.ratio }}
-            <span>·</span>
-            {{ doc.quality }}
-            <span>·</span>
-            {{ doc.fps }} fps
-          </button>
-          <small>
-            <Glyph name="check" :size="13" />
-            {{ ui.saved }}
-          </small>
-        </div>
+        </template>
+        <AppearancePicker />
+        <button class="assist-btn" :aria-pressed="ui.agent" @click="ui.agent = !ui.agent">
+          <Glyph name="spark" :size="16" />
+          创作助手
+          <i v-if="ui.agentRunning" class="run-light" aria-label="执行中" />
+        </button>
       </div>
-      <div class="body" :class="{ 'assistant-open': ui.agent }">
-        <main :key="ui.page">
-          <Home v-if="!doc" />
-          <Editor v-else-if="ui.page === 'edit'" />
-          <Workspace v-else />
-        </main>
-        <Assistant v-show="ui.agent" />
+    </header>
+    <div class="workbench">
+      <aside class="sidebar" aria-label="工作室导航">
+        <nav class="nav-group" aria-label="工作空间">
+          <button
+            aria-label="项目工作台"
+            data-hint="项目工作台"
+            :aria-current="!doc || !currentPage ? 'page' : undefined"
+            @click="home"
+          >
+            <Glyph name="home" :size="19" />
+          </button>
+        </nav>
+        <nav v-if="doc && currentPage" class="nav-group" aria-label="当前制作">
+          <button
+            v-for="(p, i) in pages"
+            :key="p[0]"
+            :data-hint="p[2] + ' · Alt+' + (i + 1)"
+            :aria-label="p[2]"
+            :aria-current="ui.page === p[0] ? 'page' : undefined"
+            @click="ui.page = p[0]"
+          >
+            <Glyph :name="p[1]" :size="19" />
+          </button>
+        </nav>
+        <nav class="nav-group sidebar-bottom" aria-label="工作室工具">
+          <button
+            v-if="doc && currentPage"
+            data-hint="命令工作台"
+            aria-label="命令工作台"
+            @click="ui.modal = 'command'"
+          >
+            <Glyph name="terminal" :size="19" />
+          </button>
+          <button data-hint="Skill 管理" aria-label="Skill 管理" @click="ui.modal = 'skills'">
+            <Glyph name="skill" :size="19" />
+          </button>
+          <button data-hint="模型配置" aria-label="模型配置" @click="ui.modal = 'settings'">
+            <Glyph name="settings" :size="19" />
+          </button>
+        </nav>
+      </aside>
+      <div class="main">
+        <div class="project-strip">
+          <div class="workspace-tab">
+            <Glyph :name="currentPage?.[1] || 'home'" :size="15" />
+            {{ currentPage?.[2] || '项目工作台' }}
+          </div>
+          <label v-if="doc && currentPage" class="inline episode-picker">
+            当前分集
+            <StudioSelect
+              aria-label="当前分集"
+              :model-value="episode?.id"
+              :options="doc.episodes.map((e) => ({ value: e.id, label: e.title }))"
+              @update:model-value="ui.episodeId = $event"
+            />
+          </label>
+        </div>
+        <div class="body" :class="{ 'assistant-open': ui.agent }">
+          <main :key="ui.page">
+            <Home v-if="ui.page === 'home' || !doc" />
+            <Editor v-else-if="ui.page === 'edit'" />
+            <Workspace v-else />
+          </main>
+          <Assistant v-show="ui.agent" />
+        </div>
       </div>
     </div>
+    <footer class="status-bar">
+      <span>
+        <i />
+        本地工作室
+        <span class="studio-version">{{ version }}</span>
+      </span>
+      <div v-if="doc && currentPage" class="project-status">
+        <span role="status">
+          <Glyph name="check" :size="12" />
+          {{ ui.saved }}
+        </span>
+        <button class="format-settings" title="工程输出设置" @click="ui.modal = 'project'">
+          {{ doc.ratio }} · {{ doc.quality }} · {{ doc.fps }} fps
+        </button>
+      </div>
+    </footer>
   </div>
   <div v-if="ui.modal" :inert="!!ui.busy"><Dialogs /></div>
   <div v-if="ui.busy" class="job" role="status">

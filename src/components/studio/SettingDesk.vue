@@ -1,4 +1,6 @@
 <script setup vapor>
+import MediaPreview from '../MediaPreview.vue'
+import StudioSelect from '../StudioSelect.vue'
 import { computed, ref, onMounted, nextTick } from 'vue'
 import { doc, ui, edit, generate, media, uploadVoice } from '../../store.js'
 import { makeCard, uid, validateVoiceSample } from '../../../shared/model.mjs'
@@ -126,6 +128,13 @@ onMounted(() => {
     locate(card.id)
   }
 })
+/** 保留缺失参考图的绑定状态，允许从可用素材重新选择。 */
+function referenceOptions(card) {
+  const bound = card.type === '角色' ? selectedOutfit(card)?.assetId : card.assetId
+  const options = [{ value: '', label: '选择参考图' }]
+  if (bound && !previewImage(bound)) options.push({ value: bound, label: '原参考图不可用', disabled: true })
+  return options.concat(availableImages.value.map((a) => ({ value: a.id, label: a.name })))
+}
 </script>
 <template>
   <section ref="pane" class="setting-desk">
@@ -171,9 +180,12 @@ onMounted(() => {
         <div class="fields">
           <label>
             类型
-            <select aria-label="类型" :value="c.type" @change="patchCard(c.id, 'type', $event.target.value)">
-              <option v-for="v in ['角色', '场景', '道具']" :key="v">{{ v }}</option>
-            </select>
+            <StudioSelect
+              aria-label="类型"
+              :model-value="c.type"
+              :options="['角色', '场景', '道具']"
+              @update:model-value="patchCard(c.id, 'type', $event)"
+            />
           </label>
           <label>
             名称
@@ -192,11 +204,12 @@ onMounted(() => {
           <div class="actions">
             <label>
               服饰
-              <select :value="selectedOutfit(c).id" @change="outfitSelection[c.id] = $event.target.value">
-                <option v-for="outfit in roleOutfits(c)" :key="outfit.id" :value="outfit.id">
-                  {{ outfit.name }}{{ outfit.id === defaultOutfit(c) ? ' · 默认' : '' }}
-                </option>
-              </select>
+              <StudioSelect
+                aria-label="服饰"
+                :model-value="selectedOutfit(c).id"
+                :options="roleOutfits(c).map((outfit) => ({ value: outfit.id, label: outfit.name + (outfit.id === defaultOutfit(c) ? ' · 默认' : '') }))"
+                @update:model-value="outfitSelection[c.id] = $event"
+              />
             </label>
             <button type="button" class="outline" @click="addOutfit(c.id)">添加服饰</button>
             <template v-if="selectedOutfit(c).id !== defaultOutfit(c)">
@@ -239,26 +252,12 @@ onMounted(() => {
           <small>参考图包含上身、全身、脸部特写、左侧和右侧五个视图。</small>
         </div>
         <div class="actions">
-          <select
+          <StudioSelect
             aria-label="绑定参考图"
-            :value="c.type === '角色' ? selectedOutfit(c).assetId : c.assetId"
-            @change="bind(c.id, $event.target.value, selectedOutfit(c)?.id)"
-          >
-            <option value="">选择参考图</option>
-            <option
-              v-if="
-                (selectedOutfit(c)?.assetId || c.assetId) &&
-                !previewImage(selectedOutfit(c)?.assetId || c.assetId)
-              "
-              :value="selectedOutfit(c)?.assetId || c.assetId"
-              disabled
-            >
-              原参考图不可用
-            </option>
-            <option v-for="a in availableImages" :key="a.id" :value="a.id">
-              {{ a.name }}
-            </option>
-          </select>
+            :model-value="(c.type === '角色' ? selectedOutfit(c).assetId : c.assetId) || ''"
+            :options="referenceOptions(c)"
+            @update:model-value="bind(c.id, $event, selectedOutfit(c)?.id)"
+          />
           <button class="outline" @click="generate('', '', c.id, 'image', selectedOutfit(c)?.id)">
             <Glyph name="spark" />
             {{ c.type === '角色' ? '生成五视图' : '生成参考图' }}
@@ -270,21 +269,19 @@ onMounted(() => {
         <div v-if="c.type === '角色'" class="voice-editor form-stack">
           <label>
             角色声音样本
-            <select
-              :value="c.voiceAssetId || ''"
-              @change="patchCard(c.id, 'voiceAssetId', $event.target.value)"
-            >
-              <option value="">未绑定样音</option>
-              <option v-for="sample in voiceSamples" :key="sample.id" :value="sample.id">
-                {{ sample.name }}
-              </option>
-            </select>
+            <StudioSelect
+              aria-label="角色声音样本"
+              :model-value="c.voiceAssetId || ''"
+              :options="[
+                { value: '', label: '未绑定样音' },
+                ...voiceSamples.map((sample) => ({ value: sample.id, label: sample.name }))
+              ]"
+              @update:model-value="patchCard(c.id, 'voiceAssetId', $event)"
+            />
           </label>
-          <audio
-            v-if="c.voiceAssetId"
+          <MediaPreview kind="audio"            v-if="c.voiceAssetId"
             :key="c.voiceAssetId"
             :src="media(c.voiceAssetId)"
-            controls
             preload="none"
           />
           <div class="actions">

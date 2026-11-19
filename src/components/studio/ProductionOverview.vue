@@ -2,7 +2,6 @@
 import { computed } from 'vue'
 import { doc, ui, episode, media, time } from '../../store.js'
 import Glyph from '../Glyph.vue'
-import FilmArt from '../FilmArt.vue'
 defineEmits(['addEpisode'])
 /** 工程的生产清单以实际剧本、分镜绑定及剪辑时长为依据。 */
 const rows = computed(() =>
@@ -33,7 +32,6 @@ function enter(id, page) {
 <template>
   <header class="studio-page-title">
     <div>
-      <div class="studio-breadcrumb">{{ doc.title }}</div>
       <h1>创作工作区</h1>
     </div>
     <button class="outline" @click="ui.modal = 'project'">
@@ -41,7 +39,7 @@ function enter(id, page) {
       工程设置
     </button>
   </header>
-  <div class="production-slate">
+  <div class="production-slate" :class="{ 'has-cover': cover }">
     <div class="slate-info">
       <div class="slate-tech">
         <Glyph name="film" :size="15" />
@@ -58,9 +56,8 @@ function enter(id, page) {
         填写项目梗概
       </button>
     </div>
-    <div class="slate-cover">
-      <img v-if="cover" :src="media(cover.id)" :alt="cover.name" />
-      <FilmArt v-else />
+    <div v-if="cover" class="slate-cover">
+      <img :src="media(cover.id)" :alt="cover.name" />
     </div>
   </div>
   <div class="production-stats">

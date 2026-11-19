@@ -14,7 +14,7 @@
   background: var(--ac-paper);
   border-left: 1px solid var(--edge);
   color: var(--ink);
-  font-family: Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-family: inherit;
   font-size: 13px;
 }
 .agent-console button {
@@ -59,27 +59,28 @@
 }
 .ac-head {
   flex: none;
-  gap: 10px;
-  padding: 15px 14px 14px 17px;
-  background: var(--surface);
+  gap: 8px;
+  min-height: 43px;
+  padding: 5px 9px;
+  background: var(--chrome);
   border-bottom: 1px solid var(--ac-rule);
 }
 .ac-symbol {
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: 27px;
+  height: 27px;
   flex: none;
-  color: var(--on-accent);
-  background: var(--accent);
-  border-radius: 9px;
+  color: var(--accent-text);
+  background: var(--selected);
+  border-radius: 4px;
 }
 .ac-heading {
   flex: 1;
   min-width: 0;
 }
 .ac-heading h2 {
-  font-size: 15px;
+  font-size: 13px;
   margin: 0;
   letter-spacing: 0.02em;
   line-height: 1.4;

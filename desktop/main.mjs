@@ -118,13 +118,13 @@ function configureStorage() {
 }
 /** 窗口与网页用相同的底色，加载工程时保持连贯。 */
 function windowColor() {
-  return nativeTheme.shouldUseDarkColors ? '#111317' : '#f5f5f8'
+  return nativeTheme.shouldUseDarkColors ? '#1c1f25' : '#f4f5f7'
 }
 /** 让系统窗口按钮沿用工作室工具栏的背景和文字颜色。 */
 function titleBarColors() {
   return nativeTheme.shouldUseDarkColors
-    ? { color: '#1b1e24', symbolColor: '#eeeff5' }
-    : { color: '#ffffff', symbolColor: '#242632' }
+    ? { color: '#272b33', symbolColor: '#e8edf5' }
+    : { color: '#eff1f4', symbolColor: '#202630' }
 }
 /** 创建隔离渲染窗口并协调关闭前保存。 */
 function createWindow() {

@@ -1,3 +1,4 @@
+import { chooseOption } from './studio-select.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import path from 'node:path'
@@ -28,12 +29,12 @@ export async function verifyVideoAssetReview(page, testRoot) {
   await batch.getByRole('button', { name: '核对分镜' }).click()
   await button('生成分镜视频').click()
   assert.equal(await start.isDisabled(), true)
-  await generation.getByLabel('为叶宁 · 旅行风衣绑定参考图').selectOption({ index: 1 })
+  await chooseOption(page, generation.getByLabel('为叶宁 · 旅行风衣绑定参考图'), 0)
   assert.equal(await start.isEnabled(), true)
   await generation.getByRole('button', { name: '关闭' }).click()
   await button('素材库').click()
   await button('生成素材').click()
-  await generation.getByLabel('视频归属').selectOption('library')
+  await chooseOption(page, generation.getByLabel('视频归属'), 'library')
   const standalone = generation.getByRole('textbox', { name: '视频画面与运镜' })
   await standalone.fill('光点淡出。')
   assert.equal(await start.isDisabled(), true)
@@ -49,7 +50,7 @@ export async function verifyVideoAssetReview(page, testRoot) {
   await page.keyboard.insertText('举起@星灯')
   await page.getByRole('button', { name: '新建设定卡', exact: true }).click()
   assert.equal(await generation.getByLabel('设定名称').inputValue(), '星灯')
-  await generation.getByLabel('设定类型').selectOption('道具')
+  await chooseOption(page, generation.getByLabel('设定类型'), '道具')
   await generation.getByRole('button', { name: '新建并引用' }).click()
   assert.equal(await standalone.locator('[data-card-id]').count(), 2)
   assert.equal(await start.isDisabled(), true)
@@ -60,9 +61,9 @@ export async function verifyVideoAssetReview(page, testRoot) {
   await button('命令工作台').click()
   const command = page.getByRole('dialog', { name: '命令工作台' })
   const execute = command.getByRole('button', { name: '运行命令' })
-  await command.getByLabel('临时服务环境').selectOption('aliyun-video')
+  await chooseOption(page, command.getByLabel('临时服务环境'), 'aliyun-video')
   assert.equal(await execute.isDisabled(), true)
-  await command.getByLabel('接收 STUDIO_OUTPUT').selectOption('.mp4')
+  await chooseOption(page, command.getByLabel('接收 STUDIO_OUTPUT'), '.mp4')
   await command.getByRole('textbox', { name: '视频画面与运镜' }).fill('光点淡出。')
   assert.equal(await execute.isDisabled(), true)
   await command.getByLabel('此镜头无需出场资产').check()

@@ -1,4 +1,5 @@
 <script setup vapor>
+import MediaPreview from '../MediaPreview.vue'
 import { computed, ref, watch } from 'vue'
 import { api, asset, media } from '../../store.js'
 import Glyph from '../Glyph.vue'
@@ -166,19 +167,13 @@ watch(
           :alt="output.name || '生成的分镜图'"
           loading="lazy"
         />
-        <video
-          v-else-if="output.kind === 'video'"
+        <MediaPreview          v-else-if="output.kind === 'video'"
           :src="media(output.id, mediaSession)"
-          :aria-label="output.name"
-          controls
-          preload="metadata"
+          :label="output.name"
         />
-        <audio
-          v-else
+        <MediaPreview kind="audio"          v-else
           :src="media(output.id, mediaSession)"
-          :aria-label="output.name"
-          controls
-          preload="metadata"
+          :label="output.name"
         />
       </template>
       <figcaption>
@@ -189,12 +184,9 @@ watch(
       </figcaption>
     </figure>
     <figure v-for="file in exports" :key="file" class="ac-output">
-      <video
-        v-if="mediaSession"
+      <MediaPreview        v-if="mediaSession"
         :src="media('exports/' + file, mediaSession)"
-        aria-label="导出的分集视频"
-        controls
-        preload="metadata"
+        label="导出的分集视频"
       />
       <figcaption><strong>分集成片</strong></figcaption>
     </figure>

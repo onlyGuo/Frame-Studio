@@ -242,7 +242,7 @@
 .pool-sort > span {
   margin-right: auto;
 }
-.media-pool .pool-sort select {
+.media-pool .pool-sort .studio-select {
   width: auto;
   max-width: 100%;
   padding: 4px;
@@ -250,7 +250,7 @@
   background: transparent;
   font-size: 11px;
 }
-.media-pool .pool-sort select:hover {
+.media-pool .pool-sort .studio-select:hover {
   border-color: var(--line);
 }
 .pool-layout {
@@ -401,11 +401,14 @@
 .pool-preview video {
   object-fit: contain;
   width: 100%;
+  min-height: 0;
+  flex: 1;
+}
+.pool-preview > .media-preview-video {
   height: 100%;
 }
-.pool-preview audio {
-  width: 95%;
-  height: 30px;
+.pool-preview > .media-preview:not(.media-preview-video) {
+  width: calc(100% - 16px);
 }
 .pool-name {
   font-size: 11px;
@@ -541,9 +544,6 @@
   .pool-preview video {
     max-height: 200px;
   }
-  .pool-preview:has(audio) {
-    padding: 15px;
-  }
 }
 @container (max-width:400px) {
   .pool-types button {
@@ -563,4 +563,4 @@
 .generation-shot { padding:10px 12px; border:1px solid var(--line); border-radius:6px }
 .generation-shot p { max-height:9em; overflow:auto; white-space:pre-wrap; font-size:12px; margin:0 }
 .pool-shot-target label { display:grid; gap:5px }
-.pool-shot-target select { width:100%; min-width:0 }
+.pool-shot-target .studio-select { width:100%; min-width:0 }

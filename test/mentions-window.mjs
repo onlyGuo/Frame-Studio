@@ -12,7 +12,7 @@ export async function verifyShotMentions(page) {
   ]) {
     if (kind !== '角色') await page.locator('.setting-filters button').filter({ hasText: kind }).click()
     await page.getByRole('button', { name: kind === '角色' ? '新建设定卡' : '新建' + kind }).click()
-    assert.equal(await page.getByLabel('类型', { exact: true }).last().inputValue(), kind)
+    assert.equal(await page.getByLabel('类型', { exact: true }).last().getAttribute('data-value'), kind)
     await page.getByLabel('名称', { exact: true }).last().fill(name)
     await page.getByLabel('名称', { exact: true }).last().press('Tab')
   }
@@ -105,7 +105,7 @@ export async function verifyShotMentions(page) {
   const costume = actor.getByLabel('服饰名称', { exact: true })
   await costume.fill('旅行风衣')
   await costume.press('Tab')
-  const outfitId = await actor.locator('.outfit-editor').getByRole('combobox').inputValue()
+  const outfitId = await actor.locator('.outfit-editor').getByRole('combobox').getAttribute('data-value')
   await actor.getByRole('button', { name: '设为默认', exact: true }).click()
   await board.click()
   await page.getByRole('button', { name: '插入角色' }).click()

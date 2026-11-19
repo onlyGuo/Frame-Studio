@@ -1,4 +1,6 @@
 <script setup vapor>
+import MediaPreview from '../MediaPreview.vue'
+import StudioSelect from '../StudioSelect.vue'
 import { computed, ref, watch } from 'vue'
 import {
   api,
@@ -215,17 +217,25 @@ function openRef(link) {
       <div class="pool-collection">
         <div class="pool-sort">
           <span>{{ visible.length }} 项</span>
-          <select v-model="usage" aria-label="素材使用情况">
-            <option value="all">全部使用状态</option>
-            <option value="used">已使用</option>
-            <option value="unused">未使用</option>
-            <option value="unbound-video">未绑定分镜的视频</option>
-          </select>
-          <select v-model="sort" aria-label="素材排序">
-            <option value="recent">最近添加</option>
-            <option value="name">名称排序</option>
-            <option value="duration">时长优先</option>
-          </select>
+          <StudioSelect
+            v-model="usage"
+            aria-label="素材使用情况"
+            :options="[
+              { value: 'all', label: '全部使用状态' },
+              { value: 'used', label: '已使用' },
+              { value: 'unused', label: '未使用' },
+              { value: 'unbound-video', label: '未绑定分镜的视频' }
+            ]"
+          />
+          <StudioSelect
+            v-model="sort"
+            aria-label="素材排序"
+            :options="[
+              { value: 'recent', label: '最近添加' },
+              { value: 'name', label: '名称排序' },
+              { value: 'duration', label: '时长优先' }
+            ]"
+          />
           <div class="pool-layout">
             <button title="缩略图视图" :aria-pressed="layout === 'grid'" @click="layout = 'grid'">
               <Glyph name="grid" :size="14" />
@@ -287,16 +297,13 @@ function openRef(link) {
             @load="readDimensions($event.target)"
             @error="unavailable.add(chosen.id)"
           />
-          <video
-            v-else-if="chosen.kind === 'video'"
+          <MediaPreview            v-else-if="chosen.kind === 'video'"
             :src="media(chosen.id)"
-            controls
-            preload="metadata"
-            @loadedmetadata="readDimensions($event.target)"
+            @loadedmetadata="readDimensions"
           />
           <template v-else>
             <Glyph name="audio" :size="28" />
-            <audio :src="media(chosen.id)" controls preload="metadata" />
+            <MediaPreview kind="audio" :src="media(chosen.id)" />
           </template>
         </div>
         <button
@@ -331,12 +338,14 @@ function openRef(link) {
         <div v-if="chosen.kind === 'video'" class="pool-shot-target">
           <label>
             分镜归属
-            <select v-model="targetShot">
-              <option value="">新建分镜 · {{ episode.title }}</option>
-              <option v-for="s in episode.shots" :key="s.id" :value="s.id">
-                {{ s.title }}{{ s.assetId === chosen.id ? ' · 已绑定' : '' }}
-              </option>
-            </select>
+            <StudioSelect
+              v-model="targetShot"
+              aria-label="分镜归属"
+              :options="[
+                { value: '', label: '新建分镜 · ' + episode.title },
+                ...episode.shots.map((s) => ({ value: s.id, label: s.title + (s.assetId === chosen.id ? ' · 已绑定' : '') }))
+              ]"
+            />
           </label>
           <button class="outline" @click="adoptVideo">
             <Glyph name="shots" :size="14" />

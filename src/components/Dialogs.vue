@@ -1,4 +1,6 @@
 <script setup vapor>
+import MediaPreview from './MediaPreview.vue'
+import StudioSelect from './StudioSelect.vue'
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { ui, doc, api, media, perform, edit, openProject, runGeneration, notify, accept } from '../store.js'
 import { resolveMentions } from '../../shared/mentions.mjs'
@@ -105,14 +107,42 @@ const names = {
   command: '命令工作台',
   exported: '成片已导出'
 }
-const sections = {
-  create: 'NEW PROJECT',
-  project: 'PROJECT SETTINGS',
-  settings: 'MODEL CONNECTIONS',
-  skills: 'SKILL LIBRARY',
-  generate: 'GENERATE MEDIA',
-  command: 'COMMAND RUNNER',
-  exported: 'EXPORT COMPLETE'
+const icons = {
+  create: 'plus',
+  project: 'settings',
+  settings: 'settings',
+  skills: 'skill',
+  generate: 'spark',
+  command: 'terminal',
+  exported: 'check'
+}
+const settingsGroups = [
+  ['llm', '语言模型', 'chat'],
+  ['image', '图像生成', 'media'],
+  ['video', '视频生成', 'film'],
+  ['audio', '声音生成', 'audio'],
+  ['agent', '助手运行', 'spark']
+]
+const profileOptions = computed(() =>
+  Object.entries(ui.config.profiles)
+    .filter(([, p]) => p.group === group.value)
+    .map(([value, p]) => ({
+      value,
+      label:
+        p.label +
+        (p.group !== 'llm' && p.ready ? ' · 已配置' : '') +
+        (ui.config.mediaDefaults[p.group] === value ? ' · 默认' : '')
+    }))
+)
+const commandProviders = computed(() => [
+  { value: '', label: '无凭据' },
+  ...Object.entries(ui.config.profiles)
+    .filter(([, p]) => p.group !== 'llm')
+    .map(([value, p]) => ({ value, label: p.label }))
+])
+/** 两种生成入口共用已有分镜的选项格式。 */
+function shotOptions(part) {
+  return (part?.shots || []).map((s) => ({ value: s.id, label: '绑定分镜 · ' + s.title }))
 }
 function pick(id) {
   profile.value = id
@@ -147,7 +177,11 @@ function load() {
     sampleText.value = ''
     voiceId.value = ''
   }
-  nextTick(() => box.value?.querySelector('input,textarea,select,button')?.focus())
+  nextTick(() => {
+    const first = box.value?.querySelector('.modal-body input:not([disabled]), .modal-body textarea')
+    const target = first || box.value?.querySelector('.modal-close')
+    target?.focus()
+  })
 }
 watch(() => ui.modal, load, { immediate: true })
 watch([skill, videoModel, () => selectedShot.value?.id], () => {
@@ -249,7 +283,9 @@ function command() {
 }
 let previousFocus
 function trap(e) {
+  if (e.defaultPrevented) return
   if (e.key === 'Escape' && !ui.busy) {
+    e.preventDefault()
     ui.modal = ''
     return
   }
@@ -275,387 +311,378 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', trap)
-  previousFocus?.focus?.()
+  nextTick(() => previousFocus?.focus?.())
 })
 </script>
 <template>
-  <div class="overlay" @mousedown.self="ui.modal = ''">
-    <section ref="box" class="modal" role="dialog" aria-modal="true" :aria-label="names[ui.modal]">
-      <header class="bar">
-        <div>
-          <div class="eyebrow">
-            <i />
-            {{ sections[ui.modal] }}
-          </div>
-          <h2>{{ names[ui.modal] }}</h2>
-        </div>
-        <button class="icon" title="关闭" @click="ui.modal = ''"><Glyph name="x" /></button>
+  <div class="overlay">
+    <section
+      ref="box"
+      class="modal"
+      :data-dialog="ui.modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="studio-dialog-title"
+    >
+      <header class="modal-titlebar">
+        <Glyph :name="icons[ui.modal]" :size="16" />
+        <h2 id="studio-dialog-title">{{ names[ui.modal] }}</h2>
+        <button class="icon modal-close" title="关闭" aria-label="关闭" @click="ui.modal = ''">
+          <Glyph name="x" :size="15" />
+        </button>
       </header>
-      <div class="modal-body">
-        <form
-          v-if="ui.modal === 'create' || ui.modal === 'project'"
-          class="form-stack"
-          @submit.prevent="saveProject"
-        >
-          <label>
-            项目名称
-            <input maxlength="200" required v-model="title" placeholder="输入短剧名称" />
-          </label>
-          <label>
-            成片画幅
-            <select v-model="ratio">
-              <option v-for="(_, r) in formats" :key="r">{{ r }}</option>
-            </select>
-          </label>
-          <div class="fields" v-if="ui.modal === 'project'">
+      <div class="modal-layout">
+        <nav v-if="ui.modal === 'settings'" class="settings-nav" aria-label="模型配置分类">
+          <button
+            v-for="[id, label, icon] in settingsGroups"
+            :key="id"
+            :aria-current="group === id ? 'true' : undefined"
+            @click="selectGroup(id)"
+          >
+            <Glyph :name="icon" :size="16" />
+            {{ label }}
+          </button>
+        </nav>
+        <div class="modal-body">
+          <form
+            v-if="ui.modal === 'create' || ui.modal === 'project'"
+            class="form-stack"
+            @submit.prevent="saveProject"
+          >
             <label>
-              成片清晰度
-              <select v-model="quality">
-                <option>720p</option>
-                <option>1080p</option>
-              </select>
+              项目名称
+              <input maxlength="200" required v-model="title" placeholder="输入短剧名称" />
             </label>
             <label>
-              帧率
-              <select v-model.number="fps">
-                <option v-for="n in [24, 25, 30]" :key="n" :value="n">{{ n }} fps</option>
-              </select>
+              成片画幅
+              <StudioSelect v-model="ratio" aria-label="成片画幅" :options="Object.keys(formats)" />
             </label>
-          </div>
-          <label v-if="ui.modal === 'project'">
-            故事梗概
-            <textarea v-model="synopsis" rows="4" />
-          </label>
-          <p class="hint">
-            {{ ui.modal === 'create' ? '选择工作目录后，将在其中创建独立的工程文件夹。' : ui.root }}
-          </p>
-          <div class="modal-actions">
-            <button type="button" class="outline" @click="ui.modal = ''">取消</button>
-            <button class="primary" :disabled="!title.trim()">
-              {{ ui.modal === 'create' ? '选择工作目录' : '保存设置' }}
-              <Glyph name="arrow" />
-            </button>
-          </div>
-        </form>
-        <template v-if="ui.modal === 'settings'">
-          <div class="tabs wide">
-            <button
-              v-for="g in [
-                ['llm', '语言模型'],
-                ['image', '图像生成'],
-                ['video', '视频生成'],
-                ['audio', '声音生成'],
-                ['agent', '助手运行']
-              ]"
-              :key="g[0]"
-              :class="{ active: group === g[0] }"
-              @click="selectGroup(g[0])"
-            >
-              {{ g[1] }}
-            </button>
-          </div>
-          <AgentPreferences v-if="group === 'agent'" />
-          <form v-else class="form-stack" @submit.prevent="saveSettings(false)">
+            <div class="fields" v-if="ui.modal === 'project'">
+              <label>
+                成片清晰度
+                <StudioSelect v-model="quality" aria-label="成片清晰度" :options="['720p', '1080p']" />
+              </label>
+              <label>
+                帧率
+                <StudioSelect
+                  v-model="fps"
+                  aria-label="帧率"
+                  :options="[24, 25, 30].map((value) => ({ value, label: value + ' fps' }))"
+                />
+              </label>
+            </div>
+            <label v-if="ui.modal === 'project'">
+              故事梗概
+              <textarea v-model="synopsis" rows="4" />
+            </label>
+            <p class="hint">
+              {{ ui.modal === 'create' ? '选择工作目录后，将在其中创建独立的工程文件夹。' : ui.root }}
+            </p>
+            <div class="modal-actions">
+              <button type="button" class="outline" @click="ui.modal = ''">取消</button>
+              <button class="primary" :disabled="!title.trim()">
+                {{ ui.modal === 'create' ? '选择工作目录' : '保存设置' }}
+                <Glyph name="arrow" />
+              </button>
+            </div>
+          </form>
+          <template v-if="ui.modal === 'settings'">
+            <h3 class="settings-heading">{{ settingsGroups.find(([id]) => id === group)?.[1] }}</h3>
+            <AgentPreferences v-if="group === 'agent'" />
+            <form v-else class="form-stack" @submit.prevent="saveSettings(false)">
+              <label>
+                服务协议
+                <StudioSelect
+                  aria-label="服务协议"
+                  :model-value="profile"
+                  :options="profileOptions"
+                  @update:model-value="pick"
+                />
+              </label>
+              <label>
+                API 基础地址
+                <input v-model="form.url" type="url" required spellcheck="false" />
+              </label>
+              <label v-if="profile !== 'hunyuan-image'">
+                模型名称
+                <input v-model="form.model" required />
+              </label>
+              <label v-if="profile === 'vllm-h3'">
+                推理步数
+                <input v-model.number="form.steps" type="number" min="1" step="1" required />
+              </label>
+              <label v-if="profile === 'hunyuan-image'">
+                SecretId
+                <input v-model="form.secretId" required />
+              </label>
+              <label>
+                {{ profile === 'hunyuan-image' ? 'SecretKey' : 'API Key' }}
+                <input
+                  type="password"
+                  autocomplete="new-password"
+                  v-model="key"
+                  :placeholder="
+                    form.configured
+                      ? '已保存，留空保留原凭据'
+                      : profile === 'vllm-h3'
+                        ? '服务启用鉴权时填写'
+                        : '输入密钥'
+                  "
+                />
+              </label>
+              <label class="inline">
+                <input type="checkbox" v-model="use" />
+                {{
+                  group === 'llm'
+                    ? '设为创作助手使用的协议'
+                    : '设为默认' + { image: '图像', video: '视频', audio: '声音' }[group] + '生成服务'
+                }}
+              </label>
+              <p v-if="group !== 'llm'" class="hint">
+                创作助手按媒体类型使用默认模型。凭据仅在生成命令执行期间注入。
+              </p>
+              <div class="modal-actions">
+                <button type="button" v-if="form.configured" class="outline" @click="saveSettings(true)">
+                  清除凭据
+                </button>
+                <button class="primary">保存配置</button>
+              </div>
+            </form>
+          </template>
+          <template v-if="ui.modal === 'skills'">
+            <div class="bar">
+              <p class="muted">内置能力与自定义本地命令包</p>
+              <button class="outline" @click="install">
+                <Glyph name="plus" />
+                导入可信 Skill
+              </button>
+            </div>
+            <div class="skill-row" v-for="s in ui.skills" :key="s.id">
+              <span class="icon-box" :class="s.kind === 'video' ? 'lavender' : 'green'">
+                <Glyph :name="s.kind === 'video' ? 'film' : 'media'" />
+              </span>
+              <div class="grow">
+                <strong>{{ s.name }}</strong>
+                <small>
+                  {{ s.builtin ? '内置 · 只读' : '自定义' }} · {{ s.command?.executable || '指令工作流' }}
+                </small>
+                <span>{{ s.description }}</span>
+                <button class="text-btn" @click="showGuide = showGuide === s.id ? '' : s.id">使用说明</button>
+                <pre v-if="showGuide === s.id">{{ s.guide }}</pre>
+              </div>
+              <button
+                class="switch"
+                role="switch"
+                :aria-checked="s.enabled"
+                :aria-label="'启用 ' + s.name"
+                :class="{ on: s.enabled }"
+                @click="manage(s.id, s.enabled ? 'disable' : 'enable')"
+              >
+                <i />
+              </button>
+              <button v-if="!s.builtin" class="icon" title="卸载 Skill" @click="manage(s.id, 'remove')">
+                <Glyph name="trash" />
+              </button>
+            </div>
+          </template>
+          <form v-if="ui.modal === 'generate'" class="form-stack" @submit.prevent="run">
             <label>
-              服务协议
-              <select :value="profile" @change="pick($event.target.value)">
-                <option
-                  v-for="[id, p] in Object.entries(ui.config.profiles).filter(([, p]) => p.group === group)"
-                  :key="id"
-                  :value="id"
-                >
-                  {{ p.label }}{{ p.group !== 'llm' && p.ready ? ' · 已配置' : ''
-                  }}{{ ui.config.mediaDefaults[p.group] === id ? ' · 默认' : '' }}
-                </option>
-              </select>
-            </label>
-            <label>
-              API 基础地址
-              <input v-model="form.url" type="url" required spellcheck="false" />
-            </label>
-            <label v-if="profile !== 'hunyuan-image'">
-              模型名称
-              <input v-model="form.model" required />
-            </label>
-            <label v-if="profile === 'vllm-h3'">
-              推理步数
-              <input v-model.number="form.steps" type="number" min="1" step="1" required />
-            </label>
-            <label v-if="profile === 'hunyuan-image'">
-              SecretId
-              <input v-model="form.secretId" required />
-            </label>
-            <label>
-              {{ profile === 'hunyuan-image' ? 'SecretKey' : 'API Key' }}
-              <input
-                type="password"
-                autocomplete="new-password"
-                v-model="key"
-                :placeholder="
-                  form.configured
-                    ? '已保存，留空保留原凭据'
-                    : profile === 'vllm-h3'
-                      ? '服务启用鉴权时填写'
-                      : '输入密钥'
+              生成能力
+              <StudioSelect
+                v-model="skill"
+                aria-label="生成能力"
+                placeholder="请先配置媒体模型并启用对应 Skill"
+                :options="
+                  choices.map((s) => ({
+                    value: s.id,
+                    label: s.name + (s.provider ? ' · ' + ui.config.profiles[s.provider].model : '')
+                  }))
                 "
               />
             </label>
-            <label class="inline">
-              <input type="checkbox" v-model="use" />
-              {{
-                group === 'llm'
-                  ? '设为创作助手使用的协议'
-                  : '设为默认' + { image: '图像', video: '视频', audio: '声音' }[group] + '生成服务'
-              }}
-            </label>
-            <p v-if="group !== 'llm'" class="hint">
-              创作助手按媒体类型使用默认模型。凭据仅在生成命令执行期间注入。
-            </p>
-            <div class="modal-actions">
-              <button type="button" v-if="form.configured" class="outline" @click="saveSettings(true)">
-                清除凭据
-              </button>
-              <button class="primary">保存配置</button>
-            </div>
-          </form>
-        </template>
-        <template v-if="ui.modal === 'skills'">
-          <div class="bar">
-            <p class="muted">内置能力与自定义本地命令包</p>
-            <button class="outline" @click="install">
-              <Glyph name="plus" />
-              导入可信 Skill
-            </button>
-          </div>
-          <div class="skill-row" v-for="s in ui.skills" :key="s.id">
-            <span class="icon-box" :class="s.kind === 'video' ? 'lavender' : 'green'">
-              <Glyph :name="s.kind === 'video' ? 'film' : 'media'" />
-            </span>
-            <div class="grow">
-              <strong>{{ s.name }}</strong>
-              <small>
-                {{ s.builtin ? '内置 · 只读' : '自定义' }} · {{ s.command?.executable || '指令工作流' }}
-              </small>
-              <span>{{ s.description }}</span>
-              <button class="text-btn" @click="showGuide = showGuide === s.id ? '' : s.id">使用说明</button>
-              <pre v-if="showGuide === s.id">{{ s.guide }}</pre>
-            </div>
-            <button
-              class="switch"
-              role="switch"
-              :aria-checked="s.enabled"
-              :aria-label="'启用 ' + s.name"
-              :class="{ on: s.enabled }"
-              @click="manage(s.id, s.enabled ? 'disable' : 'enable')"
-            >
-              <i />
-            </button>
-            <button v-if="!s.builtin" class="icon" title="卸载 Skill" @click="manage(s.id, 'remove')">
-              <Glyph name="trash" />
-            </button>
-          </div>
-        </template>
-        <form v-if="ui.modal === 'generate'" class="form-stack" @submit.prevent="run">
-          <label>
-            生成能力
-            <select v-model="skill">
-              <option v-if="!choices.length" value="">请先配置媒体模型并启用对应 Skill</option>
-              <option v-for="s in choices" :key="s.id" :value="s.id">
-                {{ s.name }}{{ s.provider ? ' · ' + ui.config.profiles[s.provider].model : '' }}
-              </option>
-            </select>
-          </label>
-          <label v-if="skillKind === 'video' && !ui.generation?.shotId">
-            视频归属
-            <select v-model="target">
-              <option value="newShot">新建分镜 · {{ currentEpisode?.title }}</option>
-              <option v-for="s in currentEpisode?.shots" :key="s.id" :value="s.id">
-                绑定分镜 · {{ s.title }}
-              </option>
-              <option value="library">独立素材 · 仅存入素材库</option>
-            </select>
-          </label>
-          <div v-if="selectedShot" class="generation-shot">
-            <strong>{{ currentEpisode?.title }} / {{ selectedShot.title }}</strong>
-            <p v-if="shotText">{{ shotText }}</p>
-            <p v-if="skillKind === 'video'">
-              {{ selectedShot.dialogue ? '本镜对白：' + selectedShot.dialogue : '本镜无对白' }}
-            </p>
-          </div>
-          <div v-if="selectedCard" class="generation-shot">
-            <strong>{{ selectedCard.name }}{{ selectedOutfit ? ' · ' + selectedOutfit.name : '' }}</strong>
-            <p>
-              {{
-                skillKind === 'audio'
-                  ? '生成角色声音样本'
-                  : selectedOutfit
-                    ? '生成五视图角色参考图'
-                    : '按设定描述生成参考图'
-              }}
-            </p>
-          </div>
-          <VideoAssetInput
-            v-if="skillKind === 'video'"
-            v-model="prompt"
-            :shot="selectedShot"
-            :episode-id="currentEpisode?.id"
-            :service="videoService"
-            :destination="target"
-            @review="reviewVideo"
-          />
-          <template v-else-if="skill === 'minimax-speech'">
-            <label>
-              音色描述
-              <textarea
-                v-model="prompt"
-                rows="3"
-                maxlength="1000"
-                :required="!voiceId.trim() && !selectedCard?.notes.trim()"
-                placeholder="例如：年轻男声，自然沉稳，音域偏低，普通话"
+            <label v-if="skillKind === 'video' && !ui.generation?.shotId">
+              视频归属
+              <StudioSelect
+                v-model="target"
+                aria-label="视频归属"
+                :options="[
+                  { value: 'newShot', label: '新建分镜 · ' + currentEpisode?.title },
+                  ...shotOptions(currentEpisode),
+                  { value: 'library', label: '独立素材 · 仅存入素材库' }
+                ]"
               />
             </label>
-            <label>
-              MiniMax 音色 ID（可选）
-              <input v-model="voiceId" maxlength="256" placeholder="填写后使用该音色合成样音" />
-            </label>
-            <label>
-              试听台词（可选）
-              <textarea v-model="sampleText" rows="2" maxlength="500" placeholder="留空使用默认试听台词" />
-            </label>
-          </template>
-          <label v-else>
-            {{ shotText || selectedCard ? '本次补充要求' : '提示词' }}
-            <textarea
-              :required="!shotText && !selectedCard"
-              rows="4"
+            <div v-if="selectedShot" class="generation-shot">
+              <strong>{{ currentEpisode?.title }} / {{ selectedShot.title }}</strong>
+              <p v-if="shotText">{{ shotText }}</p>
+              <p v-if="skillKind === 'video'">
+                {{ selectedShot.dialogue ? '本镜对白：' + selectedShot.dialogue : '本镜无对白' }}
+              </p>
+            </div>
+            <div v-if="selectedCard" class="generation-shot">
+              <strong>{{ selectedCard.name }}{{ selectedOutfit ? ' · ' + selectedOutfit.name : '' }}</strong>
+              <p>
+                {{
+                  skillKind === 'audio'
+                    ? '生成角色声音样本'
+                    : selectedOutfit
+                      ? '生成五视图角色参考图'
+                      : '按设定描述生成参考图'
+                }}
+              </p>
+            </div>
+            <VideoAssetInput
+              v-if="skillKind === 'video'"
               v-model="prompt"
-              placeholder="描述主体、画面、光线和运镜…"
+              :shot="selectedShot"
+              :episode-id="currentEpisode?.id"
+              :service="videoService"
+              :destination="target"
+              @review="reviewVideo"
             />
-          </label>
-          <label v-if="skillKind === 'video'">
-            生成时长（秒）
-            <select v-model.number="duration">
-              <option v-for="seconds in allowedDurations" :key="seconds" :value="seconds">
-                {{ seconds }} 秒
-              </option>
-            </select>
-          </label>
-          <p v-if="formatterUnavailable" class="hint">
-            请先配置语言模型，用于按所选视频 Skill 整理本镜提示词。
-          </p>
-          <div class="modal-actions">
-            <button type="button" class="outline" @click="ui.modal = 'settings'">模型配置</button>
-            <button
-              class="primary"
-              :disabled="
-                !skill ||
-                (!prompt.trim() && !shotText && !selectedCard) ||
-                (skillKind === 'video' && (!videoReady || formatterUnavailable))
-              "
-            >
-              <Glyph name="spark" />
-              开始生成
-            </button>
-          </div>
-        </form>
-        <form v-if="ui.modal === 'command'" class="form-stack" @submit.prevent="command">
-          <p class="hint">
-            工作目录为工程内的 work 文件夹。可直接调用 node、python、ffmpeg 或 PATH 中的程序。
-          </p>
-          <label>
-            可执行文件
-            <input v-model="executable" required />
-          </label>
-          <label>
-            参数（JSON 字符串数组）
-            <textarea v-model="args" rows="3" spellcheck="false" />
-          </label>
-          <div class="fields">
-            <label>
-              临时服务环境
-              <select v-model="provider">
-                <option value="">无凭据</option>
-                <option
-                  v-for="[id, p] in Object.entries(ui.config.profiles).filter(([, p]) => p.group !== 'llm')"
-                  :key="id"
-                  :value="id"
-                >
-                  {{ p.label }}
-                </option>
-              </select>
+            <template v-else-if="skill === 'minimax-speech'">
+              <label>
+                音色描述
+                <textarea
+                  v-model="prompt"
+                  rows="3"
+                  maxlength="1000"
+                  :required="!voiceId.trim() && !selectedCard?.notes.trim()"
+                  placeholder="例如：年轻男声，自然沉稳，音域偏低，普通话"
+                />
+              </label>
+              <label>
+                MiniMax 音色 ID（可选）
+                <input v-model="voiceId" maxlength="256" placeholder="填写后使用该音色合成样音" />
+              </label>
+              <label>
+                试听台词（可选）
+                <textarea v-model="sampleText" rows="2" maxlength="500" placeholder="留空使用默认试听台词" />
+              </label>
+            </template>
+            <label v-else>
+              {{ shotText || selectedCard ? '本次补充要求' : '提示词' }}
+              <textarea
+                :required="!shotText && !selectedCard"
+                rows="4"
+                v-model="prompt"
+                placeholder="描述主体、画面、光线和运镜…"
+              />
             </label>
-            <label>
-              接收 STUDIO_OUTPUT
-              <select v-model="ext">
-                <option value="">无媒体产物</option>
-                <option v-for="e in Object.keys(mediaKinds)" :key="e">{{ e }}</option>
-              </select>
+            <label v-if="skillKind === 'video'">
+              生成时长（秒）
+              <StudioSelect
+                v-model="duration"
+                aria-label="生成时长（秒）"
+                :options="allowedDurations.map((value) => ({ value, label: value + ' 秒' }))"
+              />
             </label>
-          </div>
-          <label v-if="mediaKinds[ext] === 'video'">
-            视频归属
-            <select v-model="commandTarget">
-              <option value="library">独立素材 · 仅存入素材库</option>
-              <option value="newShot">新建分镜</option>
-              <option
-                v-for="s in doc?.episodes.find((e) => e.id === ui.episodeId)?.shots"
-                :key="s.id"
-                :value="s.id"
-              >
-                绑定分镜 · {{ s.title }}
-              </option>
-            </select>
-          </label>
-          <p v-if="needsVideoFile" class="hint">
-            请在「接收 STUDIO_OUTPUT」中选择视频格式，以核对本次命令的出场资产。
-          </p>
-          <VideoAssetInput
-            v-if="videoCommand"
-            v-model="commandPrompt"
-            :shot="commandShot"
-            :episode-id="commandEpisode?.id"
-            :destination="commandTarget"
-            :service="commandVideoService"
-            @review="reviewVideo"
-          />
-          <p v-if="videoCommand" class="hint">命令可从 STUDIO_REFERENCES 读取本次视频的参考图清单。</p>
-          <div v-if="commandReceipt" class="command-receipt" role="status">
-            <p>
-              {{
-                commandReceipt.warning ||
-                (commandReceipt.code === 0 ? '命令已完成' : '命令失败，退出码 ' + commandReceipt.code)
-              }}
+            <p v-if="formatterUnavailable" class="hint">
+              请先配置语言模型，用于按所选视频 Skill 整理本镜提示词。
             </p>
-            <img
-              v-if="commandReceipt.asset?.kind === 'image'"
-              :src="media(commandReceipt.asset.id)"
-              :alt="commandReceipt.asset.name"
+            <div class="modal-actions">
+              <button type="button" class="outline" @click="ui.modal = 'settings'">模型配置</button>
+              <button
+                class="primary"
+                :disabled="
+                  !skill ||
+                  (!prompt.trim() && !shotText && !selectedCard) ||
+                  (skillKind === 'video' && (!videoReady || formatterUnavailable))
+                "
+              >
+                <Glyph name="spark" />
+                开始生成
+              </button>
+            </div>
+          </form>
+          <form v-if="ui.modal === 'command'" class="form-stack" @submit.prevent="command">
+            <p class="hint">
+              工作目录为工程内的 work 文件夹。可直接调用 node、python、ffmpeg 或 PATH 中的程序。
+            </p>
+            <label>
+              可执行文件
+              <input v-model="executable" required />
+            </label>
+            <label>
+              参数（JSON 字符串数组）
+              <textarea v-model="args" rows="3" spellcheck="false" />
+            </label>
+            <div class="fields">
+              <label>
+                临时服务环境
+                <StudioSelect v-model="provider" aria-label="临时服务环境" :options="commandProviders" />
+              </label>
+              <label>
+                接收 STUDIO_OUTPUT
+                <StudioSelect
+                  v-model="ext"
+                  aria-label="接收 STUDIO_OUTPUT"
+                  :options="[{ value: '', label: '无媒体产物' }, ...Object.keys(mediaKinds)]"
+                />
+              </label>
+            </div>
+            <label v-if="mediaKinds[ext] === 'video'">
+              视频归属
+              <StudioSelect
+                v-model="commandTarget"
+                aria-label="视频归属"
+                :options="[
+                  { value: 'library', label: '独立素材 · 仅存入素材库' },
+                  { value: 'newShot', label: '新建分镜' },
+                  ...shotOptions(commandEpisode)
+                ]"
+              />
+            </label>
+            <p v-if="needsVideoFile" class="hint">
+              请在「接收 STUDIO_OUTPUT」中选择视频格式，以核对本次命令的出场资产。
+            </p>
+            <VideoAssetInput
+              v-if="videoCommand"
+              v-model="commandPrompt"
+              :shot="commandShot"
+              :episode-id="commandEpisode?.id"
+              :destination="commandTarget"
+              :service="commandVideoService"
+              @review="reviewVideo"
             />
-            <video
-              v-else-if="commandReceipt.asset?.kind === 'video'"
-              controls
-              :src="media(commandReceipt.asset.id)"
-            />
-            <audio
-              v-else-if="commandReceipt.asset?.kind === 'audio'"
-              controls
-              :src="media(commandReceipt.asset.id)"
-            />
-          </div>
-          <div class="modal-actions">
-            <button class="primary" :disabled="needsVideoFile || (videoCommand && !videoReady)">
-              <Glyph name="play" />
-              运行命令
-            </button>
-          </div>
-        </form>
-        <div v-if="ui.modal === 'exported'" class="form-stack">
-          <p>MP4 已保存到工程的 exports 目录。</p>
-          <code>{{ ui.exported }}</code>
-          <div class="modal-actions">
-            <button class="primary" @click="api.reveal({ session: ui.session, file: ui.exported })">
-              在文件管理器中显示
-            </button>
+            <p v-if="videoCommand" class="hint">命令可从 STUDIO_REFERENCES 读取本次视频的参考图清单。</p>
+            <div v-if="commandReceipt" class="command-receipt" role="status">
+              <p>
+                {{
+                  commandReceipt.warning ||
+                  (commandReceipt.code === 0 ? '命令已完成' : '命令失败，退出码 ' + commandReceipt.code)
+                }}
+              </p>
+              <img
+                v-if="commandReceipt.asset?.kind === 'image'"
+                :src="media(commandReceipt.asset.id)"
+                :alt="commandReceipt.asset.name"
+              />
+              <MediaPreview
+                v-else-if="commandReceipt.asset?.kind === 'video'"
+                :src="media(commandReceipt.asset.id)"
+              />
+              <MediaPreview
+                kind="audio"
+                v-else-if="commandReceipt.asset?.kind === 'audio'"
+                :src="media(commandReceipt.asset.id)"
+              />
+            </div>
+            <div class="modal-actions">
+              <button class="primary" :disabled="needsVideoFile || (videoCommand && !videoReady)">
+                <Glyph name="play" />
+                运行命令
+              </button>
+            </div>
+          </form>
+          <div v-if="ui.modal === 'exported'" class="form-stack">
+            <p>MP4 已保存到工程的 exports 目录。</p>
+            <code>{{ ui.exported }}</code>
+            <div class="modal-actions">
+              <button class="primary" @click="api.reveal({ session: ui.session, file: ui.exported })">
+                在文件管理器中显示
+              </button>
+            </div>
           </div>
         </div>
       </div>

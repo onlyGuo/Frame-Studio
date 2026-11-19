@@ -231,7 +231,7 @@ function key(e) {
     e.ctrlKey ||
     e.metaKey ||
     e.altKey ||
-    e.target.closest('input,textarea,select,[contenteditable=true],aside,header.toolbar')
+    e.target.closest('input,textarea,[role=combobox],[contenteditable=true],aside,header.toolbar')
   )
     return
   if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') {

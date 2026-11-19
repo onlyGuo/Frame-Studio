@@ -1,4 +1,5 @@
 <script setup vapor>
+import StudioSelect from '../StudioSelect.vue'
 import { computed, ref, watch } from 'vue'
 import { setShotAssetFree, shotReferenceImages, shotVoiceReferences } from '../../../shared/shot-assets.mjs'
 import { supportsReferenceAudio } from '../../../resources/skills/_lib/video-inputs.mjs'
@@ -139,9 +140,7 @@ function createCard() {
   <div v-if="creating" class="video-new-card">
     <label>
       设定类型
-      <select v-model="cardType">
-        <option v-for="kind in ['角色', '场景', '道具']" :key="kind">{{ kind }}</option>
-      </select>
+      <StudioSelect v-model="cardType" aria-label="设定类型" :options="['角色', '场景', '道具']" />
     </label>
     <label>
       设定名称

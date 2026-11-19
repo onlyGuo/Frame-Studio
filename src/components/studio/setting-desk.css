@@ -129,6 +129,6 @@
   object-fit: cover;
   border-radius: 3px;
 }
-.voice-editor audio {
+.voice-editor .media-preview {
   width: min(100%, 360px);
 }

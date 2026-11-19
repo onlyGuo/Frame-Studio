@@ -1,4 +1,6 @@
 <script setup vapor>
+import MediaPreview from '../MediaPreview.vue'
+import StudioSelect from '../StudioSelect.vue'
 import { settingImage } from '../../../shared/outfits.mjs'
 import { computed } from 'vue'
 import { doc, ui, episode, editEpisode, asset, media, generate, notify, travel } from '../../store.js'
@@ -108,6 +110,12 @@ function append() {
   if (editEpisode((e) => e.clips.push(clipFromShot(s, a, doc.value.cards))))
     notify('已加入「' + episode.value.title + '」时间线')
 }
+const referenceOptions = computed(() => {
+  const items = [{ value: '', label: '未绑定参考图' }]
+  const bound = referenceId.value
+  if (bound && !previewImage(bound)) items.push({ value: bound, label: '原参考图不可用', disabled: true })
+  return items.concat(availableImages.value.map((a) => ({ value: a.id, label: a.name })))
+})
 </script>
 <template>
   <header class="studio-page-title">
@@ -210,7 +218,7 @@ function append() {
             v-if="asset(shot.assetId)?.kind === 'image' && previewImage(shot.assetId)"
             :src="previewImage(shot.assetId)"
           />
-          <video v-else-if="asset(shot.assetId)?.kind === 'video'" :src="media(shot.assetId)" controls />
+          <MediaPreview v-else-if="asset(shot.assetId)?.kind === 'video'" :src="media(shot.assetId)" />
           <img v-else-if="previewImage(referenceId)" :src="previewImage(referenceId)" alt="分镜参考图" />
           <span v-else>
             <Glyph name="shots" :size="24" />
@@ -244,10 +252,12 @@ function append() {
         <div class="fields">
           <label>
             分镜视频
-            <select :value="videoId" @change="bind('video', $event.target.value)">
-              <option value="">未绑定视频</option>
-              <option v-for="a in videos" :key="a.id" :value="a.id">{{ a.name }}</option>
-            </select>
+            <StudioSelect
+              aria-label="绑定视频"
+              :model-value="videoId"
+              :options="[{ value: '', label: '未绑定视频' }, ...videos.map((a) => ({ value: a.id, label: a.name }))]"
+              @update:model-value="bind('video', $event)"
+            />
           </label>
           <label class="narrow">
             时长（秒）
@@ -264,13 +274,12 @@ function append() {
           <img v-if="previewImage(referenceId)" :src="previewImage(referenceId)" alt="当前分镜参考图" />
           <label>
             分镜参考图
-            <select :value="referenceId" @change="bind('image', $event.target.value)">
-              <option value="">未绑定参考图</option>
-              <option v-if="referenceId && !previewImage(referenceId)" :value="referenceId" disabled>
-                原参考图不可用
-              </option>
-              <option v-for="a in availableImages" :key="a.id" :value="a.id">{{ a.name }}</option>
-            </select>
+            <StudioSelect
+              aria-label="分镜参考图"
+              :model-value="referenceId"
+              :options="referenceOptions"
+              @update:model-value="bind('image', $event)"
+            />
           </label>
           <button class="outline" @click="generate(shot.prompt, shot.id, '', 'image')">
             <Glyph name="media" />

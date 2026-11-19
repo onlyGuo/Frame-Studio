@@ -1,4 +1,5 @@
 // 驱动真实 Electron 窗口；仅用临时目录替代系统文件选择器。
+import { chooseOption } from './studio-select.mjs'
 import { _electron as electron } from 'playwright-core'
 import http from 'node:http'
 import { modelFixture, slowParts, slowQuestion, streamSlowReply } from './model-fixture.mjs'
@@ -10,6 +11,16 @@ import fs from 'node:fs/promises'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { ffmpegPath } from '../desktop/services/media.mjs'
+
+/** 退出工程后检查主页和提示栏，捕获被界面错误提示接住的异常。 */
+async function returnToProjectDesk(page) {
+  await page.getByRole('button', { name: '项目工作台', exact: true }).click()
+  await page.getByRole('heading', { name: '项目工作台', exact: true }).waitFor()
+  await page.locator('.job').waitFor({ state: 'hidden' })
+  assert.deepEqual(await page.locator('.toast.error').allTextContents(), [])
+  await page.keyboard.press('ControlOrMeta+z')
+  assert.equal(await page.getByRole('button', { name: '项目总览', exact: true }).count(), 0)
+}
 
 /** 覆盖截图中的超宽窗口、最小窗口和助手占用横向空间时的工作区。 */
 async function verifyResponsiveWorkspace(page) {
@@ -49,8 +60,7 @@ async function verifyResponsiveWorkspace(page) {
       }))
       assert.ok(bottom.timeline >= bottom.viewport - 50, JSON.stringify(bottom))
     }
-    await page.getByRole('button', { name: '项目工作台', exact: true }).click()
-    await page.getByRole('heading', { name: '项目工作台', exact: true }).waitFor()
+    await returnToProjectDesk(page)
     const library = await page.locator('.home-library').boundingBox()
     const main = await page.locator('.body > main').boundingBox()
     assert.ok(library.width >= main.width - 80)
@@ -245,16 +255,20 @@ try {
   page.on('pageerror', (err) => errors.push(err.message))
   await page.getByRole('heading', { name: '开始一部短剧' }).waitFor()
   const appearance = page.getByLabel('外观模式')
-  assert.equal(await appearance.inputValue(), 'dark')
+  assert.equal(await appearance.getAttribute('data-value'), 'dark')
   assert.equal(await app.evaluate(({ nativeTheme }) => nativeTheme.themeSource), 'dark')
-  assert.equal(await appearance.evaluate((select) => getComputedStyle(select).opacity), '1')
+  await appearance.press('ArrowDown')
+  assert.equal(await appearance.getAttribute('aria-expanded'), 'true')
+  await appearance.press('Escape')
+  assert.equal(await appearance.getAttribute('aria-expanded'), 'false')
+  assert.equal(await appearance.getAttribute('data-value'), 'dark')
   for (const mode of ['light', 'dark']) {
-    await appearance.selectOption(mode)
+    await chooseOption(page, appearance, mode)
     await page.waitForFunction((expected) => document.documentElement.dataset.theme === expected, mode)
     assert.equal(await app.evaluate(({ nativeTheme }) => nativeTheme.themeSource), mode)
   }
   await page.reload()
-  await page.waitForFunction(() => document.querySelector('[aria-label="外观模式"]')?.value === 'dark')
+  await page.waitForFunction(() => document.querySelector('[aria-label="外观模式"]')?.dataset.value === 'dark')
   if (process.env.STUDIO_SCREENSHOT) await page.screenshot({ path: process.env.STUDIO_SCREENSHOT })
   await page.getByRole('button', { name: '新建项目', exact: true }).last().click()
   await page.getByLabel('项目名称').fill('窗口验收')
@@ -297,7 +311,14 @@ try {
   assert.doesNotMatch(await page.getByRole('dialog').innerText(), /Python 3\.12/)
   await page.getByRole('button', { name: '关闭', exact: true }).click()
   await page.getByRole('button', { name: '工程包', exact: true }).click()
-  await page.getByRole('button', { name: '项目工作台', exact: true }).click()
+  await returnToProjectDesk(page)
+  await page.reload()
+  await page.locator('.home-projects button').first().click()
+  await page.getByRole('heading', { name: '创作工作区' }).waitFor()
+  await returnToProjectDesk(page)
+  await page.locator('.home-projects button').first().click()
+  await page.getByRole('button', { name: '剧本写作', exact: true }).click()
+  await returnToProjectDesk(page)
   await page.getByRole('button', { name: '导入工程包' }).click()
   await page.getByRole('heading', { name: '创作工作区' }).waitFor()
   await page.getByRole('button', { name: '剧本写作', exact: true }).click()
@@ -320,20 +341,16 @@ try {
   await page.getByLabel('模型名称').fill('video-prompt-fixture')
   await page.getByRole('button', { name: '保存配置' }).click()
   await page.getByRole('button', { name: '视频生成', exact: true }).click()
-  await page.getByLabel('服务协议').selectOption('minimax-video')
+  await chooseOption(page, page.getByLabel('服务协议'), 'minimax-video')
   assert.equal(await page.getByLabel('API 基础地址').inputValue(), 'https://api.minimaxi.com/v1')
-  await page.getByLabel('服务协议').selectOption('aliyun-video')
+  await chooseOption(page, page.getByLabel('服务协议'), 'aliyun-video')
   await page.getByLabel('API 基础地址').fill('http://127.0.0.1:' + server.address().port + '/video-api')
   await page.getByLabel('模型名称').fill('wan3.0-video-prime')
   await page.getByLabel('API Key').fill('video-test-credential')
   await page.getByRole('button', { name: '保存配置' }).click()
   await page.getByRole('button', { name: '关闭', exact: true }).click()
   await page.getByRole('button', { name: '分镜工作台', exact: true }).click()
-  await page
-    .getByLabel('分镜参考图', { exact: false })
-    .filter({ visible: true })
-    .first()
-    .selectOption({ index: 1 })
+  await chooseOption(page, page.getByLabel('分镜参考图', { exact: true }), 1)
   await verifyVideoAssetReview(page, root)
   await page.getByRole('button', { name: '生成缺失视频' }).click()
   await page.getByRole('button', { name: '生成 1 个镜头' }).click()
@@ -352,7 +369,7 @@ try {
   assert.match(videoCalls[0].input.media[0].url, /^data:image\/png;base64,/)
   await page.getByRole('button', { name: '模型配置', exact: true }).click()
   await page.getByRole('button', { name: '视频生成', exact: true }).click()
-  await page.getByLabel('服务协议').selectOption('vllm-h3')
+  await chooseOption(page, page.getByLabel('服务协议'), 'vllm-h3')
   assert.equal(await page.getByLabel('推理步数').inputValue(), '10')
   await page.getByRole('button', { name: '声音生成', exact: true }).click()
   await page.getByLabel('API 基础地址').fill('http://127.0.0.1:' + server.address().port + '/speech/v1')
@@ -362,15 +379,19 @@ try {
   await page.getByRole('button', { name: '角色与设定', exact: true }).click()
   const actor = page.getByRole('article', { name: '角色设定：叶宁' })
   await actor.getByRole('button', { name: '上传样音' }).click()
-  await actor.locator('audio').waitFor()
-  const uploadedVoice = await actor.getByLabel('角色声音样本').inputValue()
+  await actor.getByRole('button', { name: '播放', exact: true }).click()
+  const voiceProgress = actor.getByRole('slider', { name: '播放进度' })
+  await voiceProgress.and(page.locator(':enabled')).waitFor()
+  assert.ok(Number(await voiceProgress.getAttribute('max')) > 1)
+  await actor.getByRole('button', { name: '暂停', exact: true }).click()
+  const uploadedVoice = await actor.getByLabel('角色声音样本').getAttribute('data-value')
   assert.ok(uploadedVoice)
   await actor.getByRole('button', { name: '生成样音' }).click()
   await page.getByLabel('音色描述').fill('普通话，沉稳自然')
   await page.getByRole('button', { name: '开始生成', exact: true }).click()
   await page.getByRole('dialog', { name: '生成素材' }).waitFor({ state: 'hidden' })
   await page.getByText('样音已绑定至角色卡', { exact: true }).waitFor()
-  const newVoice = await actor.getByLabel('角色声音样本').inputValue()
+  const newVoice = await actor.getByLabel('角色声音样本').getAttribute('data-value')
   assert.ok(newVoice && newVoice !== uploadedVoice)
   assert.match(await actor.locator('audio').getAttribute('src'), new RegExp(newVoice + '$'))
   await verifyResponsiveWorkspace(page)
@@ -389,7 +410,7 @@ try {
   await page.getByLabel('模型名称').fill('fixture-studio')
   await page.getByRole('button', { name: '保存配置' }).click()
   await page.getByRole('button', { name: '图像生成', exact: true }).click()
-  await page.getByLabel('服务协议').selectOption('aliyun-image')
+  await chooseOption(page, page.getByLabel('服务协议'), 'aliyun-image')
   await page.getByLabel('模型名称').fill('qwen-image-3.0')
   await page.getByLabel('API 基础地址').fill('http://127.0.0.1:' + server.address().port + '/api/v1')
   await page.getByLabel('API Key').fill('media-test-credential')
@@ -441,7 +462,7 @@ try {
     /console\.log|标准输出|执行结果|输入参数|"stdout"|print\(7/
   )
   await page.getByRole('button', { name: '收起执行过程' }).last().click()
-  await appearance.selectOption('system')
+  await chooseOption(page, appearance, 'system')
   assert.equal(await app.evaluate(({ nativeTheme }) => nativeTheme.themeSource), 'system')
   await page.waitForFunction(() => document.querySelector('.ac-output img')?.naturalWidth === 640)
   const other = await page.evaluate(async () => (await window.studio.initial()).current)

@@ -1,4 +1,5 @@
 <script setup vapor>
+import StudioSelect from '../StudioSelect.vue'
 import { computed } from 'vue'
 import { edit, importMedia, media } from '../../store.js'
 import { availableImages } from '../../editor/shot-assets.mjs'
@@ -65,17 +66,13 @@ async function importReference(item) {
           查看设定
         </button>
         <div v-if="!item.hasImage" class="asset-review-repair">
-          <select
+          <StudioSelect
             v-if="availableImages.length"
             :aria-label="'为' + item.name + '绑定参考图'"
-            value=""
-            @change="bind(item, $event.target.value)"
-          >
-            <option value="" disabled>从素材库绑定参考图…</option>
-            <option v-for="image in availableImages" :key="image.id" :value="image.id">
-              {{ image.name }}
-            </option>
-          </select>
+            placeholder="从素材库绑定参考图…"
+            :options="availableImages.map((image) => ({ value: image.id, label: image.name }))"
+            @update:model-value="bind(item, $event)"
+          />
           <button
             type="button"
             class="text-btn"

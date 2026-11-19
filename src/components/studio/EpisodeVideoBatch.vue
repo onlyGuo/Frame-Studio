@@ -1,4 +1,5 @@
 <script setup vapor>
+import StudioSelect from '../StudioSelect.vue'
 import { computed, ref } from 'vue'
 import { api, asset, doc, episode, ui, flush, errorMessage } from '../../store.js'
 import { inspectVisibleShot, videoModelIssue } from '../../editor/shot-assets.mjs'
@@ -81,50 +82,57 @@ async function start() {
     <Glyph name="play" :size="14" />
     生成缺失视频
   </button>
-  <dialog ref="dialog" class="batch-dialog" aria-label="批量生成分镜视频" @close="opened = false">
-    <header>
-      <div>
-        <small>{{ episode?.title }}</small>
-        <h2>生成分镜视频</h2>
-      </div>
-      <button class="icon" aria-label="关闭批量生成" @click="dialog.close()"><Glyph name="x" /></button>
+  <dialog ref="dialog" class="modal batch-dialog" aria-label="批量生成分镜视频" @close="opened = false">
+    <header class="modal-titlebar">
+      <Glyph name="film" :size="16" />
+      <h2>生成分镜视频</h2>
+      <button class="icon modal-close" aria-label="关闭批量生成" @click="dialog.close()">
+        <Glyph name="x" />
+      </button>
     </header>
-    <p class="muted">按镜头顺序生成并绑定视频，已完成的镜头会保留。</p>
-    <div class="batch-items">
-      <div v-for="item in items" :key="item.shot.id" class="batch-entry">
-        <label class="batch-row">
-          <input
-            type="checkbox"
-            :disabled="Boolean(item.issue)"
-            :checked="selectedIds.includes(item.shot.id)"
-            @change="toggle(item.shot.id)"
-          />
-          <span>{{ item.shot.title }}</span>
-          <small>{{ item.shot.duration }} 秒</small>
-        </label>
-        <div class="batch-asset-note">
-          <small v-if="item.report.cards.length">
-            {{ item.report.cards.map((card) => card.type + ' · ' + card.name).join(' / ') }}
-          </small>
-          <small v-else-if="item.report.state === 'none'">已确认无出场资产</small>
-          <div v-if="item.issue" class="batch-issue">
-            <small>{{ item.issue }}</small>
-            <button type="button" class="text-btn" @click="openShot(item.shot.id)">核对分镜</button>
+    <div class="modal-body">
+      <p class="muted">{{ episode?.title }} · 按镜头顺序生成并绑定视频，已完成的镜头会保留。</p>
+      <div class="batch-items">
+        <div v-for="item in items" :key="item.shot.id" class="batch-entry">
+          <label class="batch-row">
+            <input
+              type="checkbox"
+              :disabled="Boolean(item.issue)"
+              :checked="selectedIds.includes(item.shot.id)"
+              @change="toggle(item.shot.id)"
+            />
+            <span>{{ item.shot.title }}</span>
+            <small>{{ item.shot.duration }} 秒</small>
+          </label>
+          <div class="batch-asset-note">
+            <small v-if="item.report.cards.length">
+              {{ item.report.cards.map((card) => card.type + ' · ' + card.name).join(' / ') }}
+            </small>
+            <small v-else-if="item.report.state === 'none'">已确认无出场资产</small>
+            <div v-if="item.issue" class="batch-issue">
+              <small>{{ item.issue }}</small>
+              <button type="button" class="text-btn" @click="openShot(item.shot.id)">核对分镜</button>
+            </div>
           </div>
         </div>
       </div>
+      <label>
+        视频生成服务
+        <StudioSelect
+          v-model="skill"
+          aria-label="视频生成服务"
+          placeholder="选择已配置的视频服务"
+          :options="
+            choices.map((s) => ({
+              value: s.id,
+              label: s.name + (s.provider ? ' · ' + ui.config.profiles[s.provider]?.model : '')
+            }))
+          "
+        />
+      </label>
+      <p v-if="submissionError" class="asset-review-issues" role="alert">{{ submissionError }}</p>
     </div>
-    <label>
-      视频生成服务
-      <select v-model="skill">
-        <option value="" disabled>选择已配置的视频服务</option>
-        <option v-for="s in choices" :key="s.id" :value="s.id">
-          {{ s.name }}{{ s.provider ? ' · ' + ui.config.profiles[s.provider]?.model : '' }}
-        </option>
-      </select>
-    </label>
-    <p v-if="submissionError" class="asset-review-issues" role="alert">{{ submissionError }}</p>
-    <footer>
+    <footer class="modal-actions">
       <button v-if="!choices.length" class="text-btn" @click="settings">配置视频模型</button>
       <button class="primary" :disabled="starting || !selectedIds.length || !skill" @click="start">
         生成 {{ selectedIds.length }} 个镜头

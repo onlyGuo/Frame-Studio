@@ -3,14 +3,14 @@
   container-type: inline-size;
 }
 .page.studio-work {
-  padding: 24px clamp(16px, 2.4vw, 38px) 36px;
+  padding: 16px clamp(14px, 1.6vw, 26px) 20px;
 }
 .studio-page-title {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 19px;
+  margin-bottom: 13px;
   flex-wrap: wrap;
 }
 .studio-page-title .actions {
@@ -18,8 +18,8 @@
 }
 .studio-work h1,
 .studio-home h1 {
-  font-size: clamp(25px, 2.2vw, 34px);
-  letter-spacing: -0.045em;
+  font-size: 20px;
+  letter-spacing: -0.01em;
 }
 .studio-breadcrumb {
   font-size: 12px;
@@ -29,15 +29,18 @@
 }
 .production-slate {
   display: grid;
-  grid-template-columns: 1.25fr 0.75fr;
-  background: #1c2522;
-  color: #f4f5e9;
-  border-radius: 8px;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 102px;
   overflow: hidden;
-  min-height: 148px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+}
+.production-slate.has-cover {
+  grid-template-columns: minmax(0, 1fr) minmax(124px, 24%);
 }
 .slate-info {
-  padding: 23px clamp(20px, 2vw, 32px);
+  padding: 13px 16px;
   align-self: center;
   min-width: 0;
 }
@@ -45,26 +48,26 @@
 .slate-synopsis {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   font: 11px var(--mono);
-  color: #d0dacc;
+  color: var(--muted);
 }
 .slate-tech i {
   width: 3px;
   height: 3px;
-  background: #899885;
+  background: var(--subtle);
   border-radius: 50%;
 }
 .slate-info h2 {
-  font-size: clamp(24px, 2.25vw, 34px);
-  margin: 14px 0 7px;
-  line-height: 1.15;
+  font-size: 18px;
+  margin: 8px 0 4px;
+  line-height: 1.3;
   overflow-wrap: anywhere;
 }
 .slate-info p {
-  color: #cad3c8;
-  font-size: 13px;
-  line-height: 1.65;
+  color: var(--label);
+  font-size: 12px;
+  line-height: 1.6;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -74,31 +77,30 @@
   font-family: inherit;
   font-size: 12px;
   padding: 3px 0;
+  color: var(--accent-text);
 }
 .slate-cover {
   position: relative;
   min-height: 100%;
   overflow: hidden;
-  background: #242b26;
+  background: var(--well);
+  border-left: 1px solid var(--line);
 }
-.slate-cover > img,
-.slate-cover > .film-art {
+.slate-cover > img {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-  min-height: 0;
-  max-height: none;
   object-fit: cover;
 }
 .production-stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: 4px;
   background: var(--surface);
-  margin: 14px 0 22px;
-  padding: 12px 0;
+  margin: 10px 0 14px;
+  padding: 7px 0;
 }
 .production-stats button {
   display: grid;
@@ -126,7 +128,7 @@
 }
 .production-stats strong {
   grid-column: 1/-1;
-  font: 550 clamp(18px, 1.8vw, 26px) / 1.3 var(--mono);
+  font: 550 19px / 1.3 var(--mono);
 }
 .production-stats em {
   font: 500 14px var(--mono);
@@ -134,7 +136,7 @@
 }
 .production-panel {
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 4px;
   background: var(--surface);
   overflow: hidden;
   min-width: 0;
@@ -161,12 +163,13 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 12px 16px;
+  padding: 7px 11px;
+  background: var(--well);
   border-bottom: 1px solid var(--line);
 }
 .production-panel > header h2,
 .cut-tools h2 {
-  font-size: 15px;
+  font-size: 13px;
   letter-spacing: 0;
 }
 .production-panel > header small {
@@ -379,7 +382,7 @@
   flex: 1 0 0;
   min-height: 295px;
   border: 1px solid var(--edge);
-  border-radius: 8px;
+  border-radius: 4px;
   overflow: hidden;
 }
 .program-monitor {
@@ -647,7 +650,7 @@
   border: 1px solid #39443e;
   background: #242c29;
   color: #dde6dc;
-  border-radius: 8px;
+  border-radius: 4px;
   overflow: hidden;
   margin-top: 15px;
   flex: none;
@@ -871,7 +874,7 @@
   .slate-cover {
     display: none;
   }
-  .production-slate {
+  .production-slate.has-cover {
     grid-template-columns: 1fr;
   }
   .production-stats strong {
@@ -888,47 +891,52 @@
     gap: 6px;
   }
 }
-.studio-home .hero.home-hero {
-  margin-top: 0;
-  margin-bottom: 18px;
-  min-height: clamp(177px, 22dvh, 320px);
-  border-radius: 8px;
+.home-library {
+  min-height: 210px;
 }
-.home-hero .film-art {
-  min-height: 177px;
-  max-height: none;
+.project-search {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
 }
-.home-hero .hero-copy {
-  padding: 22px 27px;
-}
-.home-hero .hero-copy h2 {
-  font-size: clamp(24px, 2.4vw, 34px);
-}
-.studio-work .home-library input.library-search {
+.project-search input.library-search {
   width: 150px;
-  padding: 5px 9px;
-  font-size: 12px;
+  padding: 4px 7px;
+}
+.project-list-heading,
+.home-projects > button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 60px 95px 16px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+}
+.project-list-heading {
+  min-height: 28px;
+  font-size: 11px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
 }
 .home-projects > button {
-  display: flex;
+  grid-template-columns: 26px minmax(0, 1fr) 60px 95px 16px;
   width: 100%;
-  justify-content: flex-start;
-  gap: 12px;
   text-align: left;
-  padding: 12px 16px;
+  padding-block: 8px;
+}
+.home-projects > button + button {
   border-top: 1px solid var(--line);
 }
-.home-projects > button:first-child {
-  border-top: 0;
-}
-.home-projects > button:hover {
-  background: var(--hover);
+.home-projects > button:hover,
+.home-projects > button:focus-visible {
+  background: var(--selected);
 }
 .project-tile {
   display: grid;
   place-items: center;
-  width: 39px;
-  height: 35px;
+  width: 26px;
+  height: 26px;
   border-radius: 4px;
   background: var(--selected);
   color: var(--accent-text);
@@ -937,7 +945,6 @@
   display: grid;
   gap: 3px;
   min-width: 0;
-  flex: 1;
 }
 .project-name > b,
 .project-name > small {
@@ -947,84 +954,74 @@
 }
 .project-name > b {
   font-size: 13px;
+  font-weight: 600;
 }
-.project-name > small {
-  font-size: 11px;
-}
+.project-name > small,
 .project-ratio,
 .home-projects time {
   font: 11px var(--mono);
   color: var(--muted);
 }
-.home-setup {
+.project-empty {
   display: grid;
-  grid-template-columns: 1.3fr 1fr;
-  gap: 14px;
-  margin-top: 18px;
+  justify-items: center;
+  align-content: center;
+  min-height: 210px;
+  gap: 8px;
+  padding: 28px 15px;
+  text-align: center;
+  color: var(--muted);
 }
-.home-setup .production-panel {
-  margin: 0;
+.project-empty > svg {
+  color: var(--subtle);
 }
-.home-services,
-.skill-summary {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 16px;
+.project-empty > h2 {
+  color: var(--label);
+  font-size: 15px;
+  letter-spacing: 0;
 }
 .home-services {
-  flex-wrap: wrap;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 .home-services > div {
   display: grid;
-  grid-template-columns: 5px 1fr;
+  grid-template-columns: 15px 1fr;
   align-items: center;
-  gap: 4px 7px;
+  gap: 4px 6px;
+  padding: 11px 12px;
+  color: var(--label);
+  font-size: 12px;
+}
+.home-services > div + div {
+  border-left: 1px solid var(--line);
 }
 .home-services i {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
+  margin: auto;
   border-radius: 50%;
-  background: var(--edge);
+  background: var(--subtle);
 }
 .home-services i.configured {
   background: var(--positive);
 }
-.home-services span,
-.skill-summary {
-  font-size: 12px;
-}
 .home-services small {
   grid-column: 2;
   font-size: 11px;
-  color: var(--muted);
 }
-.skill-summary b {
-  font: 600 21px var(--mono);
-}
-.skill-summary span {
-  color: var(--muted);
-  font-size: 11px;
-  margin-left: auto;
-}
-@container (max-width:550px) {
-  .home-setup {
-    grid-template-columns: 1fr;
+@container (max-width:490px) {
+  .project-list-heading {
+    grid-template-columns: minmax(0, 1fr) 45px 16px;
   }
+  .home-projects > button {
+    grid-template-columns: 26px minmax(0, 1fr) 45px 16px;
+  }
+  .project-list-heading span:last-child,
   .home-projects time {
     display: none;
   }
-  .home-hero .hero-copy {
-    padding: 17px;
-  }
-  .studio-home .actions {
-    flex-wrap: wrap;
-  }
-  .studio-home .home-hero .actions button {
-    padding: 5px 9px;
-  }
-  .studio-work .home-library input.library-search {
-    width: 110px;
+  .home-services {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

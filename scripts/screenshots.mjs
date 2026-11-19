@@ -1,4 +1,5 @@
 // 使用隔离的虚构工程拍摄实际 Electron 界面。素材与对话仅用于文档演示。
+import { chooseOption } from '../test/studio-select.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import os from 'node:os'
@@ -238,10 +239,10 @@ try {
   await click('展开执行过程')
   await capture('07-agent')
   await click('关闭助手')
-  await page.getByLabel('外观模式').selectOption('light')
+  await chooseOption(page, page.getByLabel('外观模式'), 'light')
   await click('模型配置')
   await click('视频生成')
-  await page.getByLabel('服务协议').selectOption('minimax-video')
+  await chooseOption(page, page.getByLabel('服务协议'), 'minimax-video')
   await page.getByLabel('模型名称').fill('MiniMax-H3')
   await capture('08-models')
   await click('关闭')
