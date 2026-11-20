@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 
 /** 用实际指针验证拖影、落盘后的轨道位置及撤销。 */
 export async function verifyTimelineDrag(page) {
+  const original = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))
+  await page.setViewportSize({ width: 1440, height: 940 })
   const separator = page.getByRole('separator', { name: '调整时间线高度' })
   for (let i = 0; i < 7; i++) await separator.press('ArrowUp')
   // 固定为每帧 3 像素，避免不同窗口宽度下的指针像素取整跨过相邻帧。
@@ -34,6 +36,8 @@ export async function verifyTimelineDrag(page) {
   const rail = await page.locator('.cut-timeline .rail').boundingBox()
 
   async function drag(clip, destination, time, offsetY) {
+    await destination.scrollIntoViewIfNeeded()
+    await clip.scrollIntoViewIfNeeded()
     const from = await clip.boundingBox()
     const to = await destination.boundingBox()
     const offsetX = Math.min(10, from.width / 2)
@@ -142,4 +146,5 @@ export async function verifyTimelineDrag(page) {
     const lastTrack = tracks?.at(-1)
     return lastTrack?.kind === 'audio' && audio[0]?.trackId === lastTrack.id && audio[0].start === 2.08
   })
+  await page.setViewportSize(original)
 }
