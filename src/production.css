@@ -102,9 +102,10 @@
   min-width: 100px;
   padding: 4px;
   border: 1px solid var(--line);
-  background: var(--surface);
-  border-radius: 5px;
-  box-shadow: 0 4px 16px #23302021;
+  background: var(--glass-panel);
+  backdrop-filter: var(--glass-filter);
+  border-radius: 8px;
+  box-shadow: var(--glass-shadow);
 }
 .writing-tools button {
   padding: 7px;
@@ -393,8 +394,8 @@
   width: 100%;
   aspect-ratio: 16/10;
   border-radius: 4px;
-  background: #202824;
-  color: #bccaba;
+  background: #202124;
+  color: #bfc4cc;
   overflow: hidden;
 }
 .pool-preview img,

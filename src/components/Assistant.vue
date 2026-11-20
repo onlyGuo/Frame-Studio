@@ -1,6 +1,16 @@
 <script setup vapor>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { api, ui, doc, episode, chat, cancelAgent, answerAgentApproval, openProject } from '../store.js'
+import {
+  api,
+  ui,
+  doc,
+  episode,
+  chat,
+  cancelAgent,
+  answerAgentApproval,
+  openProject,
+  openSettings
+} from '../store.js'
 import Glyph from './Glyph.vue'
 import AgentSteps from './assistant/AgentSteps.vue'
 import CommandApproval from './assistant/CommandApproval.vue'
@@ -46,7 +56,7 @@ const pageTitle = computed(
     ({
       overview: '项目总览',
       story: '剧本写作',
-      cards: '角色与设定',
+      cards: '资产',
       shots: '分镜工作台',
       edit: '剪辑台',
       media: '素材库'
@@ -410,7 +420,7 @@ onBeforeUnmount(() => window.removeEventListener('resize', syncViewport))
           @keydown="composerKey"
         />
         <div class="ac-compose-bar">
-          <button class="ac-model" @click="ui.modal = 'settings'" title="模型配置">
+          <button class="ac-model" @click="openSettings()" title="模型配置">
             <Glyph name="settings" :size="13" />
             <span>{{ profile?.model || '模型配置' }}</span>
           </button>

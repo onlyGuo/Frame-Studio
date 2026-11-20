@@ -42,10 +42,10 @@ function paint() {
       hue = 219 + 32 * Math.sin(t * 0.56),
       light = 25 + 37 * k,
       u = t + step * 1.025
-    quad(t, u, -1, 1, `hsl(${hue} 55% ${light}%)`)
-    quad(t, u, -0.72, 0.72, i % 21 < 2 ? '#202842' : `hsl(${hue + 17} 63% ${light - 10}%)`)
+    quad(t, u, -1, 1, `hsl(${hue} 40% ${light}%)`)
+    quad(t, u, -0.72, 0.72, i % 21 < 2 ? '#202842' : `hsl(${hue + 17} 45% ${light - 10}%)`)
     for (const s of [-0.91, 0.78]) if (i % 5 < 3) quad(t, u, s, s + 0.13, '#1b2542')
-    quad(t, u, -1, -0.98, `hsl(${hue} 72% ${light + 20}%)`)
+    quad(t, u, -1, -0.98, `hsl(${hue} 52% ${light + 20}%)`)
   }
 }
 onMounted(() => {

@@ -180,28 +180,20 @@ export async function openProject(method, payload) {
   await perform('正在打开工程', async () => {
     const result = await api[method](payload)
     if (result) accept(result)
+    else {
+      ui.modal = ''
+      ui.recent = (await api.initial()).recent
+    }
   })
+}
+/** 所有模型配置入口聚焦同一个设置窗口。 */
+export function openSettings() {
+  return api.showSettings().catch(error)
 }
 export async function home() {
-  await perform('正在关闭工程', async () => {
-    ui.recent = await api.closeProject()
-    ui.page = 'home'
-    // 先卸载仍在监听分集的工作区，再释放工程快照。
-    await nextTick()
-    doc.value = null
-    baseDoc = delayedState = null
-    pending = false
-    past.length = future.length = 0
-    counts()
-    ui.session = ''
-    ui.root = ''
-    ui.episodeId = ''
-    ui.shotId = ''
-    ui.focusCardId = ''
-    ui.offlineImageIds = []
-    ui.agentEvents = []
-  })
+  await perform('正在打开工程面板', () => api.showHome())
 }
+
 export async function importMedia(kind) {
   return perform('正在导入素材', async () => {
     const result = await api.addMedia({ session: ui.session, kind: kind === 'image' ? kind : undefined })

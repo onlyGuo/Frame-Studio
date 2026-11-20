@@ -2,25 +2,32 @@
 import MediaPreview from './MediaPreview.vue'
 import StudioSelect from './StudioSelect.vue'
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import { ui, doc, api, media, perform, edit, openProject, runGeneration, notify, accept } from '../store.js'
+import {
+  ui,
+  doc,
+  api,
+  media,
+  perform,
+  edit,
+  openProject,
+  openSettings,
+  runGeneration,
+  notify,
+  accept
+} from '../store.js'
 import { resolveMentions } from '../../shared/mentions.mjs'
 import { roleOutfit } from '../../shared/outfits.mjs'
 import { formats, mediaKinds } from '../../shared/model.mjs'
 import { videoDurations } from '../../resources/skills/_lib/video-inputs.mjs'
 import Glyph from './Glyph.vue'
 import VideoAssetInput from './studio/VideoAssetInput.vue'
-import AgentPreferences from './AgentPreferences.vue'
+const props = defineProps({ modal: String, leaving: Boolean })
 const box = ref(null),
   title = ref(''),
   ratio = ref('16:9'),
   synopsis = ref(''),
   quality = ref('720p'),
   fps = ref(25),
-  group = ref('llm'),
-  profile = ref('chat'),
-  form = ref({}),
-  key = ref(''),
-  use = ref(true),
   showGuide = ref('')
 const skill = ref(''),
   prompt = ref(''),
@@ -101,7 +108,6 @@ function mediaDestination(value) {
 const names = {
   create: '新建项目',
   project: '工程设置',
-  settings: '模型配置',
   skills: 'Skill 管理',
   generate: '生成素材',
   command: '命令工作台',
@@ -110,30 +116,11 @@ const names = {
 const icons = {
   create: 'plus',
   project: 'settings',
-  settings: 'settings',
   skills: 'skill',
   generate: 'spark',
   command: 'terminal',
   exported: 'check'
 }
-const settingsGroups = [
-  ['llm', '语言模型', 'chat'],
-  ['image', '图像生成', 'media'],
-  ['video', '视频生成', 'film'],
-  ['audio', '声音生成', 'audio'],
-  ['agent', '助手运行', 'spark']
-]
-const profileOptions = computed(() =>
-  Object.entries(ui.config.profiles)
-    .filter(([, p]) => p.group === group.value)
-    .map(([value, p]) => ({
-      value,
-      label:
-        p.label +
-        (p.group !== 'llm' && p.ready ? ' · 已配置' : '') +
-        (ui.config.mediaDefaults[p.group] === value ? ' · 默认' : '')
-    }))
-)
 const commandProviders = computed(() => [
   { value: '', label: '无凭据' },
   ...Object.entries(ui.config.profiles)
@@ -144,21 +131,7 @@ const commandProviders = computed(() => [
 function shotOptions(part) {
   return (part?.shots || []).map((s) => ({ value: s.id, label: '绑定分镜 · ' + s.title }))
 }
-function pick(id) {
-  profile.value = id
-  form.value = { ...ui.config.profiles[id] }
-  key.value = ''
-  const selected = group.value === 'llm' ? ui.config.llm : ui.config.mediaDefaults[group.value]
-  use.value = selected === id || (group.value !== 'llm' && !selected)
-}
-function selectGroup(g) {
-  group.value = g
-  if (g === 'agent') return
-  const selected = g === 'llm' ? ui.config.llm : ui.config.mediaDefaults[g]
-  pick(selected || Object.keys(ui.config.profiles).find((id) => ui.config.profiles[id].group === g))
-}
 function load() {
-  if (ui.modal === 'settings') selectGroup('llm')
   if (['create', 'project'].includes(ui.modal)) {
     title.value = ui.modal === 'create' ? '' : doc.value.title
     ratio.value = ui.modal === 'create' ? '16:9' : doc.value.ratio
@@ -183,28 +156,12 @@ function load() {
     target?.focus()
   })
 }
-watch(() => ui.modal, load, { immediate: true })
+watch(() => props.modal, load, { immediate: true })
 watch([skill, videoModel, () => selectedShot.value?.id], () => {
   const seconds = selectedShot.value?.duration || 5
   duration.value =
     allowedDurations.value.find((value) => value >= Math.round(seconds)) ?? allowedDurations.value.at(-1)
 })
-function saveSettings(clear = false) {
-  return perform('正在保存配置', async () => {
-    ui.config = await api.settings({
-      id: profile.value,
-      url: form.value.url,
-      model: form.value.model,
-      key: clear ? '' : key.value || undefined,
-      secretId: form.value.secretId,
-      region: form.value.region,
-      steps: form.value.steps,
-      active: use.value
-    })
-    pick(profile.value)
-    notify(clear ? '凭据已清除' : '模型配置已保存')
-  })
-}
 async function saveProject() {
   if (!title.value.trim()) return
   if (ui.modal === 'create') await openProject('create', { title: title.value.trim(), ratio: ratio.value })
@@ -315,37 +272,26 @@ onBeforeUnmount(() => {
 })
 </script>
 <template>
-  <div class="overlay">
+  <div class="overlay" :class="{ 'dialog-closing': leaving }">
     <section
       ref="box"
       class="modal"
-      :data-dialog="ui.modal"
+      :data-dialog="modal"
       role="dialog"
       aria-modal="true"
       aria-labelledby="studio-dialog-title"
     >
       <header class="modal-titlebar">
-        <Glyph :name="icons[ui.modal]" :size="16" />
-        <h2 id="studio-dialog-title">{{ names[ui.modal] }}</h2>
+        <Glyph :name="icons[modal]" :size="16" />
+        <h2 id="studio-dialog-title">{{ names[modal] }}</h2>
         <button class="icon modal-close" title="关闭" aria-label="关闭" @click="ui.modal = ''">
           <Glyph name="x" :size="15" />
         </button>
       </header>
       <div class="modal-layout">
-        <nav v-if="ui.modal === 'settings'" class="settings-nav" aria-label="模型配置分类">
-          <button
-            v-for="[id, label, icon] in settingsGroups"
-            :key="id"
-            :aria-current="group === id ? 'true' : undefined"
-            @click="selectGroup(id)"
-          >
-            <Glyph :name="icon" :size="16" />
-            {{ label }}
-          </button>
-        </nav>
         <div class="modal-body">
           <form
-            v-if="ui.modal === 'create' || ui.modal === 'project'"
+            v-if="modal === 'create' || modal === 'project'"
             class="form-stack"
             @submit.prevent="saveProject"
           >
@@ -357,7 +303,7 @@ onBeforeUnmount(() => {
               成片画幅
               <StudioSelect v-model="ratio" aria-label="成片画幅" :options="Object.keys(formats)" />
             </label>
-            <div class="fields" v-if="ui.modal === 'project'">
+            <div class="fields" v-if="modal === 'project'">
               <label>
                 成片清晰度
                 <StudioSelect v-model="quality" aria-label="成片清晰度" :options="['720p', '1080p']" />
@@ -371,85 +317,22 @@ onBeforeUnmount(() => {
                 />
               </label>
             </div>
-            <label v-if="ui.modal === 'project'">
+            <label v-if="modal === 'project'">
               故事梗概
               <textarea v-model="synopsis" rows="4" />
             </label>
             <p class="hint">
-              {{ ui.modal === 'create' ? '选择工作目录后，将在其中创建独立的工程文件夹。' : ui.root }}
+              {{ modal === 'create' ? '选择工作目录后，将在其中创建独立的工程文件夹。' : ui.root }}
             </p>
             <div class="modal-actions">
               <button type="button" class="outline" @click="ui.modal = ''">取消</button>
               <button class="primary" :disabled="!title.trim()">
-                {{ ui.modal === 'create' ? '选择工作目录' : '保存设置' }}
+                {{ modal === 'create' ? '选择工作目录' : '保存设置' }}
                 <Glyph name="arrow" />
               </button>
             </div>
           </form>
-          <template v-if="ui.modal === 'settings'">
-            <h3 class="settings-heading">{{ settingsGroups.find(([id]) => id === group)?.[1] }}</h3>
-            <AgentPreferences v-if="group === 'agent'" />
-            <form v-else class="form-stack" @submit.prevent="saveSettings(false)">
-              <label>
-                服务协议
-                <StudioSelect
-                  aria-label="服务协议"
-                  :model-value="profile"
-                  :options="profileOptions"
-                  @update:model-value="pick"
-                />
-              </label>
-              <label>
-                API 基础地址
-                <input v-model="form.url" type="url" required spellcheck="false" />
-              </label>
-              <label v-if="profile !== 'hunyuan-image'">
-                模型名称
-                <input v-model="form.model" required />
-              </label>
-              <label v-if="profile === 'vllm-h3'">
-                推理步数
-                <input v-model.number="form.steps" type="number" min="1" step="1" required />
-              </label>
-              <label v-if="profile === 'hunyuan-image'">
-                SecretId
-                <input v-model="form.secretId" required />
-              </label>
-              <label>
-                {{ profile === 'hunyuan-image' ? 'SecretKey' : 'API Key' }}
-                <input
-                  type="password"
-                  autocomplete="new-password"
-                  v-model="key"
-                  :placeholder="
-                    form.configured
-                      ? '已保存，留空保留原凭据'
-                      : profile === 'vllm-h3'
-                        ? '服务启用鉴权时填写'
-                        : '输入密钥'
-                  "
-                />
-              </label>
-              <label class="inline">
-                <input type="checkbox" v-model="use" />
-                {{
-                  group === 'llm'
-                    ? '设为创作助手使用的协议'
-                    : '设为默认' + { image: '图像', video: '视频', audio: '声音' }[group] + '生成服务'
-                }}
-              </label>
-              <p v-if="group !== 'llm'" class="hint">
-                创作助手按媒体类型使用默认模型。凭据仅在生成命令执行期间注入。
-              </p>
-              <div class="modal-actions">
-                <button type="button" v-if="form.configured" class="outline" @click="saveSettings(true)">
-                  清除凭据
-                </button>
-                <button class="primary">保存配置</button>
-              </div>
-            </form>
-          </template>
-          <template v-if="ui.modal === 'skills'">
+          <template v-if="modal === 'skills'">
             <div class="bar">
               <p class="muted">内置能力与自定义本地命令包</p>
               <button class="outline" @click="install">
@@ -485,7 +368,7 @@ onBeforeUnmount(() => {
               </button>
             </div>
           </template>
-          <form v-if="ui.modal === 'generate'" class="form-stack" @submit.prevent="run">
+          <form v-if="modal === 'generate'" class="form-stack" @submit.prevent="run">
             <label>
               生成能力
               <StudioSelect
@@ -581,7 +464,7 @@ onBeforeUnmount(() => {
               请先配置语言模型，用于按所选视频 Skill 整理本镜提示词。
             </p>
             <div class="modal-actions">
-              <button type="button" class="outline" @click="ui.modal = 'settings'">模型配置</button>
+              <button type="button" class="outline" @click="openSettings()">模型配置</button>
               <button
                 class="primary"
                 :disabled="
@@ -595,7 +478,7 @@ onBeforeUnmount(() => {
               </button>
             </div>
           </form>
-          <form v-if="ui.modal === 'command'" class="form-stack" @submit.prevent="command">
+          <form v-if="modal === 'command'" class="form-stack" @submit.prevent="command">
             <p class="hint">
               工作目录为工程内的 work 文件夹。可直接调用 node、python、ffmpeg 或 PATH 中的程序。
             </p>
@@ -675,7 +558,7 @@ onBeforeUnmount(() => {
               </button>
             </div>
           </form>
-          <div v-if="ui.modal === 'exported'" class="form-stack">
+          <div v-if="modal === 'exported'" class="form-stack">
             <p>MP4 已保存到工程的 exports 目录。</p>
             <code>{{ ui.exported }}</code>
             <div class="modal-actions">

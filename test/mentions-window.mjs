@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 
 /** 经真实桌面控件验证输入法、键盘插入、剪贴板、视觉标签、改名和删除。 */
 export async function verifyShotMentions(page) {
-  const cards = page.getByRole('button', { name: '角色与设定', exact: true })
+  const cards = page.getByRole('button', { name: '资产', exact: true })
   const board = page.getByRole('button', { name: '分镜工作台', exact: true })
   await cards.click()
   for (const [kind, name] of [
@@ -11,7 +11,7 @@ export async function verifyShotMentions(page) {
     ['道具', '红伞']
   ]) {
     if (kind !== '角色') await page.locator('.setting-filters button').filter({ hasText: kind }).click()
-    await page.getByRole('button', { name: kind === '角色' ? '新建设定卡' : '新建' + kind }).click()
+    await page.getByRole('button', { name: kind === '角色' ? '新建资产' : '新建' + kind }).click()
     assert.equal(await page.getByLabel('类型', { exact: true }).last().getAttribute('data-value'), kind)
     await page.getByLabel('名称', { exact: true }).last().fill(name)
     await page.getByLabel('名称', { exact: true }).last().press('Tab')
@@ -79,13 +79,15 @@ export async function verifyShotMentions(page) {
   await cards.click()
   // 前面的脚本修改会异步保存，等它落盘后再编辑采用失焦提交的名称字段。
   await page.getByText('已保存至本地', { exact: true }).waitFor()
+  await page.locator('.asset-list-row').filter({ hasText: '阿宁' }).click()
   const actorName = page.getByRole('article', { name: '角色设定：阿宁' }).getByLabel('名称', { exact: true })
   await actorName.fill('叶宁')
   await actorName.blur()
   const actor = page.getByRole('article', { name: '角色设定：叶宁' })
   await actor.waitFor()
   await page.getByText('已保存至本地', { exact: true }).waitFor()
-  await page.getByRole('article', { name: '道具设定：红伞' }).getByTitle('移除设定卡').click()
+  await page.locator('.asset-list-row').filter({ hasText: '红伞' }).click()
+  await page.getByRole('article', { name: '道具设定：红伞' }).getByTitle('移除资产').click()
   await board.click()
   assert.match(await editor.innerText(), /叶宁/)
   assert.equal(await editor.locator('[data-card-id][data-kind=""]').count(), 2)
@@ -101,6 +103,7 @@ export async function verifyShotMentions(page) {
     await page.screenshot({ path: process.env.STUDIO_MENTION_SCREENSHOT })
   await editor.press('Escape')
   await cards.click()
+  await page.locator('.asset-list-row').filter({ hasText: '叶宁' }).click()
   await actor.getByRole('button', { name: '添加服饰' }).click()
   const costume = actor.getByLabel('服饰名称', { exact: true })
   await costume.fill('旅行风衣')

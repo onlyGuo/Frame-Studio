@@ -1,60 +1,107 @@
+/* 资产目录独立滚动，详情按所选资产展开编辑。 */
 .setting-desk {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 550px), 1fr));
-  gap: 14px;
-  align-items: start;
-}
-.setting-desk > :is(.studio-page-title, .setting-filters, .empty) {
-  grid-column: 1 / -1;
-  margin: 0;
-}
-.setting-desk .setting-record {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
-  margin: 0;
+}
+.asset-list {
+  overflow: auto;
+  min-height: 0;
+  padding: 5px;
+}
+.asset-list-row {
+  display: flex;
+  justify-content: flex-start;
+  width: 100%;
+  gap: 10px;
+  padding: 10px;
+  text-align: left;
+  border-radius: 7px;
+  color: var(--label);
+}
+.asset-list-row:hover {
+  background: var(--hover);
+}
+.asset-list-row[aria-current] {
+  background: var(--selected);
+  color: var(--accent-text);
+}
+.asset-list-row img {
+  width: 32px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+.asset-list-row > svg {
+  flex: none;
+  margin: 8px 6px;
+}
+.asset-list-row span {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.asset-list-row b {
+  font-size: 12px;
+  font-weight: 580;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.asset-list-row small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.setting-record {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 18px 20px 24px;
+  min-width: 0;
 }
 .setting-record .thumb {
-  flex: 0 0 clamp(100px, 13cqw, 150px);
+  width: 100%;
+  height: clamp(160px, 23cqw, 280px);
+  background: var(--well);
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  color: var(--subtle);
+  overflow: hidden;
+}
+.setting-record .thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.setting-record .grow {
+  min-width: 0;
+  width: 100%;
 }
 .setting-record .actions {
   flex-wrap: wrap;
 }
-@container (max-width: 500px) {
-  .setting-desk .setting-record {
-    flex-direction: column;
-  }
-  .setting-record .thumb {
-    flex: none;
-  }
-  .setting-record .grow {
-    width: 100%;
-  }
-}
 .setting-filters {
   display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
+  gap: 2px;
+  padding: 0 7px 8px;
   border-bottom: 1px solid var(--line);
-  padding-bottom: 10px;
-  margin-bottom: 12px;
 }
 .setting-filters button {
-  padding: 6px 10px;
-  border-radius: 5px;
+  flex: 1;
+  padding: 5px 2px;
+  font-size: 11px;
   color: var(--muted);
+  border-radius: 5px;
 }
 .setting-filters button[aria-pressed='true'] {
   color: var(--accent-text);
   background: var(--selected);
-  font-weight: 650;
 }
-.setting-filters small {
-  font: 11px var(--mono);
-  color: inherit;
-}
-.setting-record.located,
-.setting-record:focus-visible {
-  outline: 2px solid var(--accent-text);
-  outline-offset: -1px;
+@container (max-width: 560px) {
+  .setting-record .fields {
+    flex-direction: column;
+  }
 }
 .setting-uses {
   font-size: 12px;
@@ -131,4 +178,8 @@
 }
 .voice-editor .media-preview {
   width: min(100%, 360px);
+}
+
+.setting-record .thumb:has(> svg) {
+  height: 100px;
 }

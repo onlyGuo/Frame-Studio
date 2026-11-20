@@ -9,7 +9,7 @@ try {
   console.log(`开发服务器已启动 ${url}`)
   const { code, signal } = await new Promise((resolve, reject) => {
     const proc = spawn(electron, ['.'], {
-      stdio: 'inherit',
+      stdio: ['inherit', 'inherit', 'inherit', 'ipc'],
       env: { ...process.env, STUDIO_DEV_URL: url }
     })
     proc.once('error', reject)

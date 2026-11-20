@@ -1,3 +1,5 @@
+import { timelineTracks } from './timeline-tracks.mjs'
+
 // 工程、人工编辑和智能体提案共用的创作模型。
 export const uid = () => globalThis.crypto.randomUUID()
 export const formats = { '16:9': [1280, 720], '9:16': [720, 1280], '1:1': [960, 960] }
@@ -86,8 +88,22 @@ const mediaFields = { id, assetId: id, trim: time, duration: length, volume: num
 const clipFields = { ...mediaFields, caption: str(500) }
 const looseClip = fields(clipFields)
 const shotClip = fields({ ...clipFields, sourceShotId: id })
-const clip = (value) => looseClip(value) || shotClip(value)
-const audio = fields({ ...mediaFields, start: time })
+const clip = (value) => {
+  if (!value) return false
+  const { trackId, captionTrackId, ...item } = value
+  return (
+    (trackId === undefined || id(trackId)) &&
+    (captionTrackId === undefined || id(captionTrackId)) &&
+    (looseClip(item) || shotClip(item))
+  )
+}
+const audioFields = fields({ ...mediaFields, start: time })
+const audio = (value) => {
+  if (!value) return false
+  const { trackId, ...item } = value
+  return (trackId === undefined || id(trackId)) && audioFields(item)
+}
+const tracks = list(fields({ id, kind: one('visual', 'caption', 'audio') }), 64)
 const shotFields = {
   id,
   title: str(200, 1),
@@ -104,7 +120,7 @@ const shot = (value) => {
   const { assetFreeFor, ...base } = value
   return (assetFreeFor === undefined || str(160009)(assetFreeFor)) && (currentShot(base) || oldShot(base))
 }
-const episode = fields({
+const episodeFields = fields({
   id,
   title: str(200, 1),
   script: str(500000),
@@ -112,6 +128,11 @@ const episode = fields({
   clips: list(clip),
   audio: list(audio)
 })
+const episode = (value) => {
+  if (!value) return false
+  const { tracks: rows, ...base } = value
+  return episodeFields(base) && (rows === undefined || tracks(rows))
+}
 const cardFields = {
   id,
   name: str(200, 1),
@@ -184,6 +205,16 @@ export function validateProject(value) {
     for (const outfit of c.outfits || []) check(outfit.assetId, ['image'])
   }
   for (const e of value.episodes) {
+    const trackKinds = new Map(timelineTracks(e).map(({ id, kind }) => [id, kind]))
+    for (const clip of e.clips) {
+      if (
+        (clip.trackId && trackKinds.get(clip.trackId) !== 'visual') ||
+        (clip.captionTrackId && trackKinds.get(clip.captionTrackId) !== 'caption')
+      )
+        throw Error('画面或字幕所属轨道无效')
+    }
+    for (const clip of e.audio)
+      if (clip.trackId && trackKinds.get(clip.trackId) !== 'audio') throw Error('音频所属轨道无效')
     for (const s of e.shots) {
       check(s.assetId, ['image', 'video'])
       check(s.referenceId, ['image'])

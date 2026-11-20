@@ -1,6 +1,6 @@
 <script setup vapor>
 import studioIcon from './assets/studio-icon.svg'
-import { computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import {
   ui,
   doc,
@@ -14,6 +14,7 @@ import {
   flush,
   home,
   openProject,
+  openSettings,
   travel,
   history,
   archive,
@@ -22,6 +23,7 @@ import {
 import { captionImage } from './captions.js'
 import Glyph from './components/Glyph.vue'
 import Home from './views/Home.vue'
+import Settings from './views/Settings.vue'
 import Workspace from './views/Workspace.vue'
 import Editor from './views/Editor.vue'
 import Dialogs from './components/Dialogs.vue'
@@ -32,11 +34,30 @@ import { version } from '../package.json'
 const pages = [
   ['overview', 'grid', '项目总览'],
   ['story', 'pen', '剧本写作', 'violet'],
-  ['cards', 'cards', '角色与设定', 'amber'],
+  ['cards', 'cards', '资产', 'amber'],
   ['shots', 'shots', '分镜工作台', 'rose'],
   ['media', 'media', '素材库', 'teal'],
   ['edit', 'edit', '剪辑台', 'violet']
 ]
+const windowRole = ref('')
+const closingSettings = ref(false)
+const displayedModal = ref(ui.modal)
+let modalTimer
+watch(
+  () => ui.modal,
+  (value) => {
+    clearTimeout(modalTimer)
+    if (value) displayedModal.value = value
+    else
+      modalTimer = setTimeout(
+        () => {
+          displayedModal.value = ''
+        },
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 160
+      )
+  },
+  { flush: 'sync' }
+)
 const currentPage = computed(() => pages.find((p) => p[0] === ui.page))
 let offClose,
   offProgress,
@@ -44,6 +65,9 @@ let offClose,
   offAgent,
   offBatch,
   offAppearance,
+  offRecent,
+  offConfiguration,
+  offOpenProject,
   closeRequested = false
 /** 关闭时先提交当前输入，等待正在执行的任务完成取消并刷新工程。 */
 async function finishClose() {
@@ -52,6 +76,14 @@ async function finishClose() {
   try {
     document.activeElement?.blur?.()
     await flush()
+    if (
+      windowRole.value === 'settings' &&
+      window.matchMedia('(prefers-reduced-motion: no-preference)').matches
+    ) {
+      if (closingSettings.value) return
+      closingSettings.value = true
+      await new Promise((resolve) => setTimeout(resolve, 160))
+    }
     await api.closeReady()
   } catch (err) {
     error(err)
@@ -61,6 +93,10 @@ watch(() => [ui.busy, ui.agentRunning, ui.videoBatch?.status], finishClose)
 function key(e) {
   if (e.defaultPrevented || ui.modal || e.target.closest?.('dialog[open]')) return
   if (e.key === 'Escape') {
+    if (windowRole.value === 'settings' && !ui.busy) {
+      api.closeWindow().catch(error)
+      return
+    }
     if (!ui.busy) {
       if (ui.error) ui.error = ''
       else ui.agent = false
@@ -88,8 +124,23 @@ function key(e) {
     ui.agent = !ui.agent
   }
 }
+/** 窗口切到后台时降低外壳工具的强调程度。 */
+function syncWindowFocus() {
+  document.documentElement.toggleAttribute('data-window-inactive', !document.hasFocus())
+}
 onMounted(async () => {
+  syncWindowFocus()
+  window.addEventListener('focus', syncWindowFocus)
+  window.addEventListener('blur', syncWindowFocus)
   try {
+    offConfiguration = api.onConfiguration(({ config, skills }) => {
+      ui.config = config
+      ui.skills = skills
+    })
+    offRecent = api.onRecent((recent) => {
+      ui.recent = recent
+    })
+    offOpenProject = api.onOpenProject(({ method, payload }) => openProject(method, payload))
     let reconnect = []
     let pendingBatches = []
     offAppearance = api.onAppearance(
@@ -100,6 +151,7 @@ onMounted(async () => {
     )
     offAgent = api.onAgentEvent((update) => (reconnect ? reconnect.push(update) : agentUpdate(update)))
     const data = await api.initial()
+    windowRole.value = data.windowRole
     setAgent(data.agentTask)
     ui.videoBatch = data.videoBatch
     ui.recent = data.recent
@@ -126,23 +178,54 @@ onMounted(async () => {
       if (ui.canCancel) await api.cancel()
       await finishClose()
     })
+    await api.closeListenerReady()
   } catch (err) {
     error(err)
   }
   window.addEventListener('keydown', key)
 })
 onBeforeUnmount(() => {
+  window.removeEventListener('focus', syncWindowFocus)
+  window.removeEventListener('blur', syncWindowFocus)
+  clearTimeout(modalTimer)
   offClose?.()
   offProgress?.()
   offCaptions?.()
   offAgent?.()
   offBatch?.()
   offAppearance?.()
+  offRecent?.()
+  offConfiguration?.()
+  offOpenProject?.()
   window.removeEventListener('keydown', key)
 })
 </script>
 <template>
-  <div class="shell" :inert="!!ui.modal || !!ui.busy">
+  <div
+    v-if="windowRole === 'settings'"
+    class="shell settings-shell"
+    :class="{ 'settings-closing': closingSettings }"
+    :inert="!!ui.busy || closingSettings"
+  >
+    <header class="toolbar">
+      <div class="brand">
+        <Glyph name="settings" :size="17" />
+        <span>设置</span>
+      </div>
+      <div class="actions">
+        <button class="icon" title="关闭设置" aria-label="关闭" @click="api.closeWindow().catch(error)">
+          <Glyph name="x" :size="16" />
+        </button>
+      </div>
+    </header>
+    <Settings v-if="ui.config" />
+  </div>
+  <div
+    v-else
+    class="shell"
+    :class="{ 'launcher-shell': windowRole === 'home' }"
+    :inert="!!displayedModal || !!ui.busy"
+  >
     <header class="toolbar">
       <div class="window-title">
         <div class="brand" title="帧序 Frame Studio">
@@ -200,8 +283,12 @@ onBeforeUnmount(() => {
             </button>
           </div>
         </template>
+        <button v-if="doc" class="icon" aria-label="关闭工程" title="关闭工程" @click="api.closeWindow()">
+          <Glyph name="x" :size="16" />
+        </button>
         <AppearancePicker />
         <button
+          v-if="doc"
           class="assist-btn"
           data-tone="violet"
           aria-controls="studio-assistant"
@@ -216,13 +303,13 @@ onBeforeUnmount(() => {
       </div>
     </header>
     <div class="workbench">
-      <aside class="sidebar" aria-label="工作室导航">
+      <aside v-if="doc" class="sidebar" aria-label="工作室导航">
         <nav class="nav-group" aria-label="工作空间">
           <button
             aria-label="项目工作台"
             data-hint="项目工作台"
             :aria-current="!doc || !currentPage ? 'page' : undefined"
-            @click="home"
+            @click="doc && home()"
           >
             <Glyph name="home" :size="19" />
           </button>
@@ -258,12 +345,12 @@ onBeforeUnmount(() => {
           >
             <Glyph name="skill" :size="19" />
           </button>
-          <button data-hint="模型配置" aria-label="模型配置" @click="ui.modal = 'settings'">
+          <button data-hint="模型配置" aria-label="模型配置" @click="openSettings">
             <Glyph name="settings" :size="19" />
           </button>
         </nav>
       </aside>
-      <div class="main">
+      <div class="main" :class="{ 'with-directory': doc && ['cards', 'shots'].includes(ui.page) }">
         <div v-if="doc && currentPage" class="project-strip">
           <label class="inline episode-picker">
             当前分集
@@ -277,11 +364,11 @@ onBeforeUnmount(() => {
         </div>
         <div class="body" :class="{ 'assistant-open': ui.agent }">
           <main :key="ui.page">
-            <Home v-if="ui.page === 'home' || !doc" />
+            <Home v-if="windowRole === 'home'" />
             <Editor v-else-if="ui.page === 'edit'" />
-            <Workspace v-else />
+            <Workspace v-else-if="doc" />
           </main>
-          <Assistant v-show="ui.agent" id="studio-assistant" />
+          <Assistant v-if="doc" v-show="ui.agent" id="studio-assistant" />
         </div>
       </div>
     </div>
@@ -302,7 +389,7 @@ onBeforeUnmount(() => {
       </div>
     </footer>
   </div>
-  <div v-if="ui.modal" :inert="!!ui.busy"><Dialogs /></div>
+  <div v-if="displayedModal" :inert="!!ui.busy"><Dialogs :modal="displayedModal" :leaving="!ui.modal" /></div>
   <div v-if="ui.busy" class="job" role="status">
     <div>
       <i class="spinner" />

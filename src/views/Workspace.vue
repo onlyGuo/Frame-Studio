@@ -15,7 +15,11 @@ function addEpisode() {
 }
 </script>
 <template>
-  <div class="page studio-work" v-if="doc">
+  <div
+    class="page studio-work"
+    :class="{ 'directory-work': ['cards', 'shots'].includes(ui.page) }"
+    v-if="doc"
+  >
     <ProductionOverview v-if="ui.page === 'overview'" @add-episode="addEpisode" />
 
     <ScreenplayDesk v-if="ui.page === 'story'" @add-episode="addEpisode" />

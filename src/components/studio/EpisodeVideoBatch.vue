@@ -1,7 +1,7 @@
 <script setup vapor>
 import StudioSelect from '../StudioSelect.vue'
-import { computed, ref } from 'vue'
-import { api, asset, doc, episode, ui, flush, errorMessage } from '../../store.js'
+import { computed, ref, onBeforeUnmount } from 'vue'
+import { api, asset, doc, episode, ui, openSettings, flush, errorMessage } from '../../store.js'
 import { inspectVisibleShot, videoModelIssue } from '../../editor/shot-assets.mjs'
 import Glyph from '../Glyph.vue'
 const dialog = ref(null),
@@ -10,6 +10,22 @@ const dialog = ref(null),
   skill = ref(''),
   starting = ref(false),
   submissionError = ref('')
+const leaving = ref(false)
+let closeTimer
+/** 保留顶层弹窗直至退场结束，再交还背景焦点。 */
+function close(after) {
+  if (leaving.value) return
+  leaving.value = true
+  closeTimer = setTimeout(
+    () => {
+      dialog.value?.close()
+      leaving.value = false
+      after?.()
+    },
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 160
+  )
+}
+onBeforeUnmount(() => clearTimeout(closeTimer))
 const missing = computed(() => episode.value?.shots.filter((s) => asset(s.assetId)?.kind !== 'video') || [])
 const choices = computed(() =>
   ui.skills.filter(
@@ -34,6 +50,8 @@ const selectedIds = computed(() =>
 )
 /** 预选已有脚本且通过出场资产和服务核对的镜头。 */
 function review() {
+  clearTimeout(closeTimer)
+  leaving.value = false
   submissionError.value = ''
   opened.value = true
   skill.value =
@@ -44,8 +62,9 @@ function review() {
 }
 /** 收起批量选择，定位到未通过核对的分镜并保留当前分集。 */
 function openShot(id) {
-  dialog.value.close()
-  ui.shotId = id
+  close(() => {
+    ui.shotId = id
+  })
 }
 function toggle(id) {
   selected.value = selected.value.includes(id)
@@ -53,11 +72,10 @@ function toggle(id) {
     : [...selected.value, id]
 }
 function settings() {
-  dialog.value.close()
-  ui.modal = 'settings'
+  close(openSettings)
 }
 async function start() {
-  if (starting.value || !selectedIds.value.length || !skill.value) return
+  if (starting.value || leaving.value || !selectedIds.value.length || !skill.value) return
   const shotIds = [...selectedIds.value]
   starting.value = true
   submissionError.value = ''
@@ -69,7 +87,7 @@ async function start() {
       shotIds,
       skillId: skill.value
     })
-    dialog.value.close()
+    close()
   } catch (err) {
     submissionError.value = errorMessage(err)
   } finally {
@@ -82,11 +100,18 @@ async function start() {
     <Glyph name="play" :size="14" />
     生成缺失视频
   </button>
-  <dialog ref="dialog" class="modal batch-dialog" aria-label="批量生成分镜视频" @close="opened = false">
+  <dialog
+    ref="dialog"
+    class="modal batch-dialog"
+    :class="{ 'dialog-closing': leaving }"
+    @cancel.prevent="close()"
+    aria-label="批量生成分镜视频"
+    @close="opened = false"
+  >
     <header class="modal-titlebar">
       <Glyph name="film" :size="16" />
       <h2>生成分镜视频</h2>
-      <button class="icon modal-close" aria-label="关闭批量生成" @click="dialog.close()">
+      <button class="icon modal-close" aria-label="关闭批量生成" @click="close()">
         <Glyph name="x" />
       </button>
     </header>

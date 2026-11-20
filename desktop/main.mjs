@@ -37,12 +37,14 @@ const dev =
 const entry = dev || pathToFileURL(path.join(base, 'dist/index.html')).href
 const root = configureStorage()
 let win,
+  homeWindow,
+  settingsWindow,
+  quitting = false,
   settings,
   skills,
   commands,
   active,
-  task,
-  closing = false
+  task
 const agent = new BackgroundAgent((event) => {
   if (win && !win.isDestroyed()) win.webContents.send('studio:agent-event', event)
 })
@@ -62,13 +64,21 @@ else if (!app.requestSingleInstanceLock()) {
     app.exit(1)
   } else app.quit()
 } else {
+  // 开发启动器退出时，让窗口完成正常的保存与关闭流程。
+  if (dev && process.send) process.once('disconnect', () => app.quit())
+  app.on('before-quit', () => {
+    quitting = true
+  })
   app.on('second-instance', () => {
-    if (win?.isMinimized()) win.restore()
-    win?.focus()
+    const target = BrowserWindow.getFocusedWindow() || win || homeWindow || settingsWindow
+    if (target?.isMinimized()) target.restore()
+    target?.show()
+    target?.focus()
   })
   app
     .whenReady()
     .then(() => {
+      if (isMac && !app.isPackaged) app.dock.setIcon(path.join(base, 'build/icon.png'))
       settings = new Settings(root, {
         seal(value) {
           if (!safeStorage.isEncryptionAvailable()) throw Error('请先解锁系统密钥存储')
@@ -78,12 +88,12 @@ else if (!app.requestSingleInstanceLock()) {
       })
       nativeTheme.themeSource = settings.data.appearance
       nativeTheme.on('updated', () => {
-        if (win && !win.isDestroyed()) {
+        for (const window of BrowserWindow.getAllWindows()) {
           if (!isMac) {
-            win.setBackgroundColor(windowColor())
-            win.setTitleBarOverlay(titleBarColors())
+            window.setBackgroundColor(windowColor())
+            window.setTitleBarOverlay(titleBarColors())
           }
-          win.webContents.send('studio:appearance', nativeTheme.shouldUseDarkColors)
+          window.webContents.send('studio:appearance', nativeTheme.shouldUseDarkColors)
         }
       })
       const resource = app.isPackaged ? process.resourcesPath : path.join(base, 'resources')
@@ -100,13 +110,8 @@ else if (!app.requestSingleInstanceLock()) {
         mediaResponse(new URL(req.url).hostname === active?.session ? active : agent.project, req)
       )
       register()
-      createWindow()
-      app.on('activate', () => {
-        if (!BrowserWindow.getAllWindows().length) createWindow()
-      })
-      app.on('window-all-closed', () => {
-        if (process.platform !== 'darwin') app.quit()
-      })
+      createWindow('home')
+      app.on('window-all-closed', () => app.quit())
     })
     .catch((err) => {
       dialog.showErrorBox('工作室启动失败', err.message)
@@ -126,22 +131,30 @@ function configureStorage() {
 }
 /** 窗口与网页用相同的底色，加载工程时保持连贯。 */
 function windowColor() {
-  return nativeTheme.shouldUseDarkColors ? '#1c1f25' : '#f4f5f7'
+  return nativeTheme.shouldUseDarkColors ? '#202226' : '#f5f6f8'
 }
 /** 让系统窗口按钮沿用工作室工具栏的背景和文字颜色。 */
 function titleBarColors() {
   return nativeTheme.shouldUseDarkColors
-    ? { color: '#272b33', symbolColor: '#e8edf5' }
-    : { color: '#eff1f4', symbolColor: '#202630' }
+    ? { color: '#292c31', symbolColor: '#e8edf5' }
+    : { color: '#eceef1', symbolColor: '#202630' }
 }
 /** 创建隔离渲染窗口并协调关闭前保存。 */
-function createWindow() {
-  closing = false
-  win = new BrowserWindow({
-    width: 1440,
-    height: 940,
-    minWidth: 900,
-    minHeight: 600,
+function createWindow(role = 'project') {
+  const home = role === 'home'
+  const preferences = role === 'settings'
+  let ready = false,
+    allowed = false
+  const window = new BrowserWindow({
+    width: home ? 820 : preferences ? 760 : 1440,
+    height: home ? 620 : preferences ? 650 : 940,
+    minWidth: home ? 660 : preferences ? 580 : 900,
+    minHeight: home ? 440 : preferences ? 440 : 600,
+    title: home
+      ? '工程面板 · 帧序'
+      : preferences
+        ? '设置 · 帧序'
+        : (active?.data.title || '工程') + ' · 帧序',
     titleBarStyle: 'hidden',
     titleBarOverlay: { height: 43, ...(isMac ? {} : titleBarColors()) },
     ...(isMac
@@ -160,32 +173,72 @@ function createWindow() {
       nodeIntegration: false
     }
   })
-  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
-  win.webContents.on('will-navigate', (event, url) => {
+  if (home) homeWindow = window
+  else if (preferences) settingsWindow = window
+  else win = window
+  window.studioRole = role
+  window.allowStudioClose = () => {
+    allowed = true
+    window.close()
+  }
+  window.registerStudioClose = () => {
+    ready = true
+  }
+  window.on('page-title-updated', (event) => event.preventDefault())
+  window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  window.webContents.on('will-navigate', (event, url) => {
     if (url !== entry) event.preventDefault()
   })
-  win.once('ready-to-show', () => win.show())
-  win.on('close', (event) => {
-    if (!closing && !win.webContents.isCrashed()) {
+  // 新文档需要重新注册保存回调；空白页和加载错误页可以直接关闭。
+  window.webContents.on('did-navigate', () => {
+    ready = false
+  })
+  window.once('ready-to-show', () => window.show())
+  window.on('close', (event) => {
+    if (!allowed && ready && !window.webContents.isCrashed()) {
       event.preventDefault()
-      win.webContents.send('studio:close')
+      window.webContents.send('studio:close')
     }
   })
-  win.on('closed', () => {
-    win = null
-    active = null
-    task?.abort()
-    batch.cancel(batch.current?.id)
-    agent.cancel(agent.current?.id)
+  window.on('closed', () => {
+    if (home) homeWindow = null
+    else if (preferences) settingsWindow = null
+    else {
+      win = null
+      active = null
+      task?.abort()
+      batch.cancel(batch.current?.id)
+      agent.cancel(agent.current?.id)
+      if (!quitting) showHome()
+    }
   })
   const menu = [{ role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' }]
   if (process.platform === 'darwin') menu.unshift({ role: 'appMenu' })
   Menu.setApplicationMenu(Menu.buildFromTemplate(menu))
-  win.loadURL(entry)
+  window.loadURL(entry).catch((err) => {
+    if (window.isDestroyed() || err.code === 'ERR_ABORTED') return
+    console.error('无法加载工作室界面', err.message)
+    if (!dev) dialog.showErrorBox('工作室启动失败', err.message)
+    window.close()
+  })
+}
+/** 工程面板与工程窗口共享主进程服务，分别管理各自的页面状态。 */
+function showHome() {
+  if (!homeWindow) createWindow('home')
+  homeWindow.show()
+  if (homeWindow.isMinimized()) homeWindow.restore()
+  homeWindow.focus()
+  homeWindow.webContents.send('studio:recent', settings.data.recent)
 }
 /** 使用系统原生选择器取得用户选择的目录。 */
 async function directory(title) {
-  const r = await dialog.showOpenDialog(win, { title, properties: ['openDirectory', 'createDirectory'] })
+  const r = await dialog.showOpenDialog(
+    BrowserWindow.getFocusedWindow() || win || homeWindow || settingsWindow,
+    {
+      title,
+      properties: ['openDirectory', 'createDirectory']
+    }
+  )
   return r.canceled ? null : r.filePaths[0]
 }
 /** 建立当前工程会话，并更新最近列表。 */
@@ -193,6 +246,14 @@ function selectProject(project) {
   const working = [agent.controller && agent.project, batch.project].find((p) => p?.root === project.root)
   active = working || project
   settings.remember(project.root, project.data)
+  if (!win) createWindow()
+  else {
+    win.show()
+    win.focus()
+  }
+  win.setTitle(active.data.title + ' · 帧序')
+  homeWindow?.hide()
+  homeWindow?.webContents.send('studio:recent', settings.data.recent)
   return active.snapshot()
 }
 /** 核验 IPC 的目标仍是当前工程。 */
@@ -228,14 +289,15 @@ async function exportFilm(project, episodeId, signal, progress) {
 /** 所有文件选择、项目切换与密钥解密集中在主进程。 */
 function register() {
   const routes = {
-    initial: () => ({
+    initial: (_p, window) => ({
+      windowRole: window.studioRole,
       recent: settings.data.recent,
       config: settings.view(),
       darkMode: nativeTheme.shouldUseDarkColors,
       skills: skills.list(),
-      current: active?.snapshot(),
-      agentTask: agent.snapshot(),
-      videoBatch: batch.current
+      current: window.studioRole !== 'project' ? undefined : active?.snapshot(),
+      agentTask: window.studioRole !== 'project' ? undefined : agent.snapshot(),
+      videoBatch: window.studioRole !== 'project' ? undefined : batch.current
     }),
     create: async (p) => {
       const dir = await directory('选择新工程的父目录')
@@ -275,8 +337,8 @@ function register() {
         return r.filePath
       }
     },
-    restore: async () => {
-      const r = await dialog.showOpenDialog(win, {
+    restore: async (_p, window) => {
+      const r = await dialog.showOpenDialog(window, {
         properties: ['openFile'],
         filters: [{ name: '帧序工程', extensions: ['framepack'] }]
       })
@@ -402,19 +464,72 @@ function register() {
       else return shell.openPath(project.root)
     },
     cancel: () => task?.abort(),
-    closeReady: () => {
-      closing = true
-      win.close()
-    }
+    showHome: () => showHome(),
+    showSettings: () => {
+      if (!settingsWindow) createWindow('settings')
+      else {
+        if (settingsWindow.isMinimized()) settingsWindow.restore()
+        if (!settingsWindow.webContents.isLoadingMainFrame()) settingsWindow.show()
+        settingsWindow.focus()
+      }
+    },
+    closeWindow: (_p, window) => window.close(),
+    closeListenerReady: (_p, window) => window.registerStudioClose(),
+    closeReady: (_p, window) => window.allowStudioClose()
   }
+  const homeMethods = new Set([
+    'initial',
+    'showSettings',
+    'create',
+    'open',
+    'recent',
+    'restore',
+    'settings',
+    'agentPreferences',
+    'appearance',
+    'skills',
+    'installSkill',
+    'manageSkill',
+    'closeListenerReady',
+    'closeReady',
+    'closeWindow'
+  ])
+  const settingsMethods = new Set([
+    'initial',
+    'settings',
+    'agentPreferences',
+    'appearance',
+    'closeWindow',
+    'closeListenerReady',
+    'closeReady'
+  ])
+  const projectMethods = new Set(['create', 'open', 'recent', 'restore'])
   for (const [method, fn] of Object.entries(routes))
-    ipcMain.handle('studio:' + method, (e, p) => {
+    ipcMain.handle('studio:' + method, async (e, p) => {
+      const window = BrowserWindow.fromWebContents(e.sender)
       if (
-        e.sender !== win?.webContents ||
-        e.senderFrame !== win.webContents.mainFrame ||
-        (dev ? new URL(e.senderFrame.url).origin !== new URL(dev).origin : e.senderFrame.url !== entry)
+        !window ||
+        (window !== win && window !== homeWindow && window !== settingsWindow) ||
+        e.senderFrame !== window.webContents.mainFrame ||
+        (dev ? new URL(e.senderFrame.url).origin !== new URL(dev).origin : e.senderFrame.url !== entry) ||
+        (window.studioRole === 'home' && !homeMethods.has(method)) ||
+        (window.studioRole === 'settings' && !settingsMethods.has(method))
       )
         throw Error('未知窗口')
-      return fn(p)
+      if (window.studioRole === 'home' && projectMethods.has(method) && win) {
+        win.webContents.send('studio:open-project', { method, payload: p })
+        win.show()
+        win.focus()
+        homeWindow.hide()
+        return null
+      }
+      const result = await fn(p, window)
+      if (['settings', 'agentPreferences', 'appearance', 'installSkill', 'manageSkill'].includes(method)) {
+        const configuration = { config: settings.view(), skills: skills.list() }
+        for (const target of BrowserWindow.getAllWindows())
+          target.webContents.send('studio:configuration', configuration)
+      }
+      if (window.studioRole === 'home' && projectMethods.has(method)) return null
+      return result
     })
 }

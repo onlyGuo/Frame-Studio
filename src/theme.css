@@ -1,30 +1,34 @@
 /* 每种颜色按界面职责命名，监看器、胶片及时间线使用独立的调色。 */
 :root {
   color-scheme: light;
-  --paper: #f4f5f7;
-  --workspace: #fafbfc;
-  --surface: #ffffff;
-  --well: #eaedf1;
-  --field: #ffffff;
-  --hover: #e4e9f1;
+  --glass-highlight: #ffffff9c;
+  --glass-filter: none;
+  --glass-coverage: 100%;
+  --player-coverage: 100%;
+  --paper: #f5f6f8;
+  --workspace: #f5f6f8;
+  --surface: #fcfcfd;
+  --well: #edeff2;
+  --field: #fcfcfd;
+  --hover: #ebedf2;
   --ink: #202630;
   --label: #394352;
   --muted: #566171;
   --subtle: #687382;
-  --line: #d9dfe7;
-  --edge: #c4ccd7;
-  --selected: #dbe9fc;
-  --accent: #285dc1;
+  --line: #dee1e6;
+  --edge: #c8cdd5;
+  --selected: #e3e9f3;
+  --accent: #526fa8;
   --on-accent: #fff;
-  --accent-text: #204f9d;
-  --accent-hover: #204d9e;
-  --focus: #3675d6;
-  --violet: #6a4bb2;
-  --teal: #14766d;
-  --rose: #a74776;
-  --amber: #895924;
-  --film-glow: #8b78d7;
-  --film-light: #5d9fc5;
+  --accent-text: #405e93;
+  --accent-hover: #465f92;
+  --focus: #5175ab;
+  --violet: #705f97;
+  --teal: #497670;
+  --rose: #91647a;
+  --amber: #806742;
+  --film-glow: #978bb8;
+  --film-light: #80a0b8;
   --positive: #36714f;
   --positive-bg: #e3f2e8;
   --danger: #a34139;
@@ -32,35 +36,36 @@
   --warning: #80541d;
   --warning-bg: #fbf3e3;
   --warning-line: #dfcbae;
-  --chrome: #eff1f4;
+  --chrome: #eceef1;
   --scrim: #202b4345;
   --shadow: 0 12px 36px #20233020;
 }
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --paper: #1c1f25;
-  --workspace: #1c1f25;
-  --surface: #23272e;
-  --well: #292e37;
-  --field: #1c2027;
-  --hover: #333b48;
+  --glass-highlight: #ffffff18;
+  --paper: #202226;
+  --workspace: #202226;
+  --surface: #27292e;
+  --well: #2b2e34;
+  --field: #24262b;
+  --hover: #30333a;
   --ink: #e8edf5;
   --label: #c8d0dc;
   --muted: #a2adbd;
   --subtle: #94a0b2;
-  --line: #373f4b;
-  --edge: #454f5e;
-  --selected: #293e60;
-  --accent: #2d62c5;
-  --accent-hover: #3770d7;
-  --accent-text: #a7caff;
-  --focus: #7caeff;
-  --violet: #c4a8ff;
-  --teal: #80d9c9;
-  --rose: #f2a7c9;
-  --amber: #ebc084;
-  --film-glow: #9064ef;
-  --film-light: #50a6d8;
+  --line: #383b41;
+  --edge: #4b4f58;
+  --selected: #343f53;
+  --accent: #4d679a;
+  --accent-hover: #556fa2;
+  --accent-text: #b6c9ed;
+  --focus: #98b6e4;
+  --violet: #b3a5d4;
+  --teal: #98bcb6;
+  --rose: #cea9bb;
+  --amber: #d1b991;
+  --film-glow: #9483b5;
+  --film-light: #7699b2;
   --positive: #92ccab;
   --positive-bg: #23362c;
   --danger: #f1ab9e;
@@ -68,9 +73,24 @@
   --warning: #e7c78f;
   --warning-bg: #332d22;
   --warning-line: #584a34;
-  --chrome: #272b33;
+  --chrome: #292c31;
   --scrim: #10131980;
   --shadow: 0 14px 42px #0005;
+}
+/* 浮层在支持磨砂且允许透明效果时透出背景，表单和正文始终使用实色。 */
+@supports (backdrop-filter: blur(1px)) {
+  @media (prefers-reduced-transparency: no-preference) {
+    :root {
+      --glass-filter: blur(18px);
+      --glass-coverage: 90%;
+      --player-coverage: 80%;
+    }
+  }
+}
+:root {
+  --glass-panel: color-mix(in srgb, var(--surface) var(--glass-coverage), transparent);
+  --glass-edge: inset 0 1px 0 var(--glass-highlight);
+  --glass-shadow: var(--glass-edge), var(--shadow);
 }
 /* 同一制作阶段在导航、页签和状态区沿用对应的点缀色。 */
 [data-tone='violet'] {

@@ -49,10 +49,11 @@
   margin: 3px 0;
   padding: 3px;
   border: 1px solid var(--edge);
-  border-radius: 5px;
-  background: var(--surface);
+  border-radius: 8px;
+  background: var(--glass-panel);
+  backdrop-filter: var(--glass-filter);
   color: var(--ink);
-  box-shadow: var(--shadow);
+  box-shadow: var(--glass-shadow);
   font-size: 12px;
   overflow: auto;
   overscroll-behavior: contain;
@@ -63,7 +64,7 @@
   align-items: center;
   min-height: 26px;
   padding: 4px 7px;
-  border-radius: 3px;
+  border-radius: 5px;
   cursor: default;
 }
 .studio-select-menu svg {
@@ -164,13 +165,18 @@ input[type='range']:disabled {
   background: var(--surface);
   color: var(--ink);
 }
+.media-preview-video {
+  position: relative;
+  justify-content: center;
+  background: #16171a;
+}
 .media-preview video {
   display: block;
   width: 100%;
   min-height: 0;
   max-height: 300px;
   object-fit: contain;
-  background: #13171d;
+  background: #16171a;
 }
 .media-preview audio {
   display: none;
@@ -206,4 +212,38 @@ input[type='range']:disabled {
 .media-preview-error {
   padding: 4px 8px;
   color: var(--danger);
+}
+
+/* 视频控制浮在画面上，暂停和键盘操作时持续可见；音频保留独立控制行。 */
+.media-preview-video .media-preview-controls {
+  position: absolute;
+  inset: auto 6px 6px;
+  --muted: #eef1f5;
+  --hover: #ffffff24;
+  --edge: #b8c3d0;
+  --accent: #e8effe;
+  --focus: #c3d7ff;
+  color: var(--muted);
+  border: 1px solid #ffffff27;
+  border-radius: 10px;
+  background: color-mix(in srgb, #25282e var(--player-coverage), transparent);
+  backdrop-filter: var(--glass-filter);
+  box-shadow: inset 0 1px 0 #ffffff1a, 0 2px 6px #0002;
+}
+.media-preview-video:has(.media-preview-error) .media-preview-controls {
+  position: static;
+}
+@media (hover: hover) {
+  .media-preview-video.is-playing:not(:hover, :focus-within) .media-preview-controls {
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .media-preview-video .media-preview-controls {
+    transition: opacity 150ms ease;
+  }
+  .media-preview-controls button:active {
+    scale: 0.96;
+  }
 }

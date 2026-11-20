@@ -30,6 +30,10 @@ const methods = [
   'render',
   'reveal',
   'cancel',
+  'showHome',
+  'showSettings',
+  'closeWindow',
+  'closeListenerReady',
   'closeReady'
 ]
 const api = Object.fromEntries(
@@ -41,6 +45,9 @@ for (const [method, channel] of [
   ['onVideoBatch', 'studio:batch'],
   ['onAppearance', 'studio:appearance'],
   ['onClose', 'studio:close'],
+  ['onConfiguration', 'studio:configuration'],
+  ['onRecent', 'studio:recent'],
+  ['onOpenProject', 'studio:open-project'],
   ['onAgentEvent', 'studio:agent-event'],
   ['onCaptions', 'studio:captions']
 ]) {

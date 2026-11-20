@@ -2,7 +2,7 @@
 import MediaPreview from '../MediaPreview.vue'
 import StudioSelect from '../StudioSelect.vue'
 import { settingImage } from '../../../shared/outfits.mjs'
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { doc, ui, episode, editEpisode, asset, media, generate, notify, travel } from '../../store.js'
 import { indexShotMentions } from '../../../shared/mentions.mjs'
 import { setShotAssetFree } from '../../../shared/shot-assets.mjs'
@@ -20,6 +20,23 @@ import EpisodeVideoBatch from './EpisodeVideoBatch.vue'
 import ShotAssetReview from './ShotAssetReview.vue'
 import { bindShotMedia } from '../../../shared/shot-media.mjs'
 const shot = computed(() => episode.value.shots.find((s) => s.id === ui.shotId) || episode.value.shots[0])
+const query = ref('')
+const detail = ref(null)
+watch(
+  () => shot.value?.id,
+  () => {
+    if (detail.value) detail.value.scrollTop = 0
+  }
+)
+const filteredShots = computed(() =>
+  shots.value
+    .map((s, i) => ({ s, i }))
+    .filter(({ s, i }) =>
+      (String(i + 1) + ' ' + s.title + ' ' + s.prompt + ' ' + s.dialogue)
+        .toLocaleLowerCase()
+        .includes(query.value.trim().toLocaleLowerCase())
+    )
+)
 const shots = computed(() => episode.value.shots)
 const assetReport = computed(() => shot.value && inspectVisibleShot(doc.value, shot.value))
 /** 记录当前脚本版本的出场选择，或将漏标的设定加入脚本。 */
@@ -81,11 +98,16 @@ function bind(kind, id) {
     } else bindShotMedia(current, asset(id), doc.value.assets)
   })
 }
-/** 列表与属性面板按镜头 ID 操作，重排时保留选择。 */
+/** 属性面板按镜头 ID 更新，重排时保留选择。 */
 function patch(id, key, value) {
   editEpisode((e) => {
     e.shots.find((s) => s.id === id)[key] = value
   })
+}
+function rename(shot, input) {
+  const title = input.value.trim() || shot.title
+  input.value = title
+  if (title !== shot.title) patch(shot.id, 'title', title)
 }
 function add() {
   const s = makeShot()
@@ -118,182 +140,211 @@ const referenceOptions = computed(() => {
 })
 </script>
 <template>
-  <header class="studio-page-title">
-    <h1>分镜工作台</h1>
-    <div class="actions">
-      <EpisodeVideoBatch />
-      <button class="primary" @click="add">
-        <Glyph name="plus" />
-        添加分镜
-      </button>
-    </div>
-  </header>
-  <section v-if="episodeCards.length" class="episode-card-strip" aria-label="本集引用资产">
-    <h2>本集引用资产</h2>
-    <button
-      v-for="card in episodeCards"
-      :key="card.id"
-      :aria-label="'查看' + card.type + '设定：' + card.name"
-      @click="openCard(card.id)"
-    >
-      <img
-        v-if="previewImage(settingImage(card))"
-        :src="previewImage(settingImage(card))"
-        alt=""
-        loading="lazy"
-      />
-      <small class="mention-kind" :data-kind="card.type">{{ card.type }}</small>
-      <strong>{{ card.name }}</strong>
-    </button>
-  </section>
-  <div v-if="!shots.length" class="empty">
-    <Glyph name="shots" :size="36" />
-    <h3>为这一集安排第一个镜头</h3>
-    <p>添加分镜，或根据本集剧本让创作助手拆镜。</p>
-    <button class="outline" @click="ui.agent = true">
-      <Glyph name="spark" />
-      打开创作助手
-    </button>
-  </div>
-  <div v-else class="shot-console">
-    <section class="production-panel shot-list">
-      <header>
+  <div class="shot-console directory-layout">
+    <section class="shot-list directory-sidebar">
+      <header class="shot-list-header">
         <h2>
           镜头清单
           <small>{{ shots.length }}</small>
         </h2>
         <span class="table-meta">{{ ready }} / {{ shots.length }} 个视频就绪</span>
       </header>
-      <div v-for="(s, i) in shots" :key="s.id" class="shot-line" :class="{ chosen: shot?.id === s.id }">
-        <button class="shot-preview" :aria-label="'选择镜头 ' + (i + 1)" @click="ui.shotId = s.id">
-          <img
-            v-if="asset(s.assetId)?.kind === 'image' && previewImage(s.assetId)"
-            :src="previewImage(s.assetId)"
-            loading="lazy"
-          />
-          <video
-            v-else-if="asset(s.assetId)?.kind === 'video'"
-            :src="media(s.assetId)"
-            muted
-            preload="metadata"
-          />
-          <Glyph v-else name="shots" :size="16" />
-        </button>
-        <div class="shot-line-content">
-          <small>SH {{ String(i + 1).padStart(3, '0') }} · {{ s.duration }}s</small>
-          <input
-            aria-label="镜头名称"
-            :value="s.title"
-            @focus="ui.shotId = s.id"
-            @change="patch(s.id, 'title', $event.target.value)"
-          />
-          <small class="shot-render-state" :data-ready="asset(s.assetId)?.kind === 'video'">
-            {{ videoStatus(s) }}
-          </small>
-        </div>
-        <button class="icon" title="查看镜头属性" @click="ui.shotId = s.id">
-          <Glyph name="chevron" :size="15" />
+      <label class="sidebar-search">
+        <Glyph name="search" :size="15" />
+        <input v-model="query" type="search" aria-label="搜索镜头" placeholder="搜索镜头名称、脚本或对白" />
+      </label>
+      <div class="shot-list-items">
+        <p v-if="!filteredShots.length" class="sidebar-empty">
+          {{ shots.length ? '没有匹配的镜头' : '暂无镜头' }}
+        </p>
+        <button
+          v-for="{ s, i } in filteredShots"
+          :key="s.id"
+          type="button"
+          class="shot-line"
+          :class="{ chosen: shot?.id === s.id }"
+          :aria-current="shot?.id === s.id ? 'true' : undefined"
+          :aria-label="'选择镜头 ' + (i + 1)"
+          :aria-description="s.title"
+          @click="ui.shotId = s.id"
+        >
+          <span class="shot-preview" aria-hidden="true">
+            <img
+              v-if="asset(s.assetId)?.kind === 'image' && previewImage(s.assetId)"
+              :src="previewImage(s.assetId)"
+              alt=""
+              loading="lazy"
+            />
+            <video
+              v-else-if="asset(s.assetId)?.kind === 'video'"
+              :src="media(s.assetId)"
+              muted
+              preload="metadata"
+            />
+            <Glyph v-else name="shots" :size="16" />
+          </span>
+          <span class="shot-line-content">
+            <small>SH {{ String(i + 1).padStart(3, '0') }} · {{ s.duration }}s</small>
+            <strong class="shot-line-title" :title="s.title">{{ s.title }}</strong>
+            <small class="shot-render-state" :data-ready="asset(s.assetId)?.kind === 'video'">
+              {{ videoStatus(s) }}
+            </small>
+          </span>
+          <Glyph name="chevron" :size="15" aria-hidden="true" />
         </button>
       </div>
     </section>
-    <section class="production-panel shot-detail" :key="shot.id">
-      <header>
-        <h2>镜头属性</h2>
+    <div class="directory-content">
+      <header class="studio-page-title">
+        <h1>分镜工作台</h1>
         <div class="actions">
-          <button class="icon" title="镜头前移" :disabled="!index" @click="reorder(-1)">
-            <Glyph name="back" :size="15" />
+          <EpisodeVideoBatch />
+          <button class="primary" @click="add">
+            <Glyph name="plus" />
+            添加分镜
           </button>
-          <button class="icon" title="镜头后移" :disabled="index === shots.length - 1" @click="reorder(1)">
-            <Glyph name="chevron" :size="15" />
-          </button>
-          <button class="icon" title="删除分镜" @click="remove"><Glyph name="trash" :size="15" /></button>
         </div>
       </header>
-      <div class="shot-form">
-        <div class="story-frame">
-          <img
-            v-if="asset(shot.assetId)?.kind === 'image' && previewImage(shot.assetId)"
-            :src="previewImage(shot.assetId)"
-          />
-          <MediaPreview v-else-if="asset(shot.assetId)?.kind === 'video'" :src="media(shot.assetId)" />
-          <img v-else-if="previewImage(referenceId)" :src="previewImage(referenceId)" alt="分镜参考图" />
-          <span v-else>
-            <Glyph name="shots" :size="24" />
-            待制作分镜
-          </span>
-        </div>
-        <MentionScript
-          :model-value="shot.prompt"
-          :cards="doc.cards"
-          :image-url="previewImage"
-          @update:model-value="patch(shot.id, 'prompt', $event)"
-          @history="travel"
-          @manage="ui.page = 'cards'"
-        />
-        <label>
-          对白 / 字幕
-          <textarea
-            :value="shot.dialogue"
-            placeholder="角色名：台词。每位说话人另起一行，以便引用角色样音。"
-            @change="patch(shot.id, 'dialogue', $event.target.value)"
-          />
-        </label>
-        <ShotAssetReview
-          :report="assetReport"
-          :can-confirm="Boolean(shot.prompt.trim())"
-          can-open-card
-          @confirm="confirmAssets"
-          @reference="reference"
-          @open-card="openCard"
-        />
-        <div class="fields">
-          <label>
-            分镜视频
-            <StudioSelect
-              aria-label="绑定视频"
-              :model-value="videoId"
-              :options="[{ value: '', label: '未绑定视频' }, ...videos.map((a) => ({ value: a.id, label: a.name }))]"
-              @update:model-value="bind('video', $event)"
+      <div ref="detail" class="directory-scroll">
+        <section v-if="episodeCards.length" class="episode-card-strip" aria-label="本集引用资产">
+          <h2>本集引用资产</h2>
+          <button
+            v-for="card in episodeCards"
+            :key="card.id"
+            :aria-label="'查看' + card.type + '设定：' + card.name"
+            @click="openCard(card.id)"
+          >
+            <img
+              v-if="previewImage(settingImage(card))"
+              :src="previewImage(settingImage(card))"
+              alt=""
+              loading="lazy"
             />
-          </label>
-          <label class="narrow">
-            时长（秒）
-            <input
-              type="number"
-              min=".04"
-              step=".1"
-              :value="shot.duration"
-              @change="patch(shot.id, 'duration', $event.target.valueAsNumber)"
-            />
-          </label>
-        </div>
-        <div class="shot-reference-row">
-          <img v-if="previewImage(referenceId)" :src="previewImage(referenceId)" alt="当前分镜参考图" />
-          <label>
-            分镜参考图
-            <StudioSelect
-              aria-label="分镜参考图"
-              :model-value="referenceId"
-              :options="referenceOptions"
-              @update:model-value="bind('image', $event)"
-            />
-          </label>
-          <button class="outline" @click="generate(shot.prompt, shot.id, '', 'image')">
-            <Glyph name="media" />
-            生成分镜参考图
+            <small class="mention-kind" :data-kind="card.type">{{ card.type }}</small>
+            <strong>{{ card.name }}</strong>
           </button>
-        </div>
-        <div class="actions">
-          <button class="soft" @click="generate(shot.prompt, shot.id, '', 'video')">
+        </section>
+        <div v-if="!shots.length" class="empty">
+          <Glyph name="shots" :size="36" />
+          <h3>为这一集安排第一个镜头</h3>
+          <p>添加分镜，或根据本集剧本让创作助手拆镜。</p>
+          <button class="outline" @click="ui.agent = true">
             <Glyph name="spark" />
-            生成分镜视频
-          </button>
-          <button class="outline" :disabled="!shot.assetId" @click="append">
-            <Glyph name="plus" />
-            加入剪辑
+            打开创作助手
           </button>
         </div>
+        <section v-if="shot" class="production-panel shot-detail" :key="shot.id">
+          <header>
+            <h2>镜头属性</h2>
+            <div class="actions">
+              <button class="icon" title="镜头前移" :disabled="!index" @click="reorder(-1)">
+                <Glyph name="back" :size="15" />
+              </button>
+              <button
+                class="icon"
+                title="镜头后移"
+                :disabled="index === shots.length - 1"
+                @click="reorder(1)"
+              >
+                <Glyph name="chevron" :size="15" />
+              </button>
+              <button class="icon" title="删除分镜" @click="remove"><Glyph name="trash" :size="15" /></button>
+            </div>
+          </header>
+          <div class="shot-form">
+            <label>
+              镜头名称
+              <input :value="shot.title" maxlength="200" @change="rename(shot, $event.target)" />
+            </label>
+            <div class="story-frame">
+              <img
+                v-if="asset(shot.assetId)?.kind === 'image' && previewImage(shot.assetId)"
+                :src="previewImage(shot.assetId)"
+              />
+              <MediaPreview v-else-if="asset(shot.assetId)?.kind === 'video'" :src="media(shot.assetId)" />
+              <img v-else-if="previewImage(referenceId)" :src="previewImage(referenceId)" alt="分镜参考图" />
+              <span v-else>
+                <Glyph name="shots" :size="24" />
+                待制作分镜
+              </span>
+            </div>
+            <MentionScript
+              :model-value="shot.prompt"
+              :cards="doc.cards"
+              :image-url="previewImage"
+              @update:model-value="patch(shot.id, 'prompt', $event)"
+              @history="travel"
+              @manage="ui.page = 'cards'"
+            />
+            <label>
+              对白 / 字幕
+              <textarea
+                :value="shot.dialogue"
+                placeholder="角色名：台词。每位说话人另起一行，以便引用角色样音。"
+                @change="patch(shot.id, 'dialogue', $event.target.value)"
+              />
+            </label>
+            <ShotAssetReview
+              :report="assetReport"
+              :can-confirm="Boolean(shot.prompt.trim())"
+              can-open-card
+              @confirm="confirmAssets"
+              @reference="reference"
+              @open-card="openCard"
+            />
+            <div class="fields">
+              <label>
+                分镜视频
+                <StudioSelect
+                  aria-label="绑定视频"
+                  :model-value="videoId"
+                  :options="[
+                    { value: '', label: '未绑定视频' },
+                    ...videos.map((a) => ({ value: a.id, label: a.name }))
+                  ]"
+                  @update:model-value="bind('video', $event)"
+                />
+              </label>
+              <label class="narrow">
+                时长（秒）
+                <input
+                  type="number"
+                  min=".04"
+                  step=".1"
+                  :value="shot.duration"
+                  @change="patch(shot.id, 'duration', $event.target.valueAsNumber)"
+                />
+              </label>
+            </div>
+            <div class="shot-reference-row">
+              <img v-if="previewImage(referenceId)" :src="previewImage(referenceId)" alt="当前分镜参考图" />
+              <label>
+                分镜参考图
+                <StudioSelect
+                  aria-label="分镜参考图"
+                  :model-value="referenceId"
+                  :options="referenceOptions"
+                  @update:model-value="bind('image', $event)"
+                />
+              </label>
+              <button class="outline" @click="generate(shot.prompt, shot.id, '', 'image')">
+                <Glyph name="media" />
+                生成分镜参考图
+              </button>
+            </div>
+            <div class="actions">
+              <button class="soft" @click="generate(shot.prompt, shot.id, '', 'video')">
+                <Glyph name="spark" />
+                生成分镜视频
+              </button>
+              <button class="outline" :disabled="!shot.assetId" @click="append">
+                <Glyph name="plus" />
+                加入剪辑
+              </button>
+            </div>
+          </div>
+        </section>
       </div>
-    </section>
+    </div>
   </div>
 </template>

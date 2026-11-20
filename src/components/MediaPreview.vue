@@ -61,7 +61,7 @@ async function fullscreen() {
   <div
     ref="frame"
     class="media-preview"
-    :class="{ 'media-preview-video': kind === 'video' }"
+    :class="{ 'media-preview-video': kind === 'video', 'is-playing': !paused && !failed }"
     :aria-label="label"
     role="group"
   >
