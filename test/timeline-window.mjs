@@ -4,6 +4,11 @@ import assert from 'node:assert/strict'
 export async function verifyTimelineDrag(page) {
   const separator = page.getByRole('separator', { name: '调整时间线高度' })
   for (let i = 0; i < 7; i++) await separator.press('ArrowUp')
+  // 固定为每帧 3 像素，避免不同窗口宽度下的指针像素取整跨过相邻帧。
+  await page.getByRole('slider', { name: '缩放' }).evaluate((input) => {
+    input.value = '75'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  })
   const lane = (id) => page.locator('.lane[data-track-id="' + id + '"]')
   const pictureClips = page.locator('.lane[data-track-kind="visual"] .timeline-clip')
   const caption = page.locator('.lane[data-track-kind="caption"] .timeline-clip')
@@ -34,7 +39,8 @@ export async function verifyTimelineDrag(page) {
     const offsetX = Math.min(10, from.width / 2)
     await page.mouse.move(from.x + offsetX, from.y + from.height / 2)
     await page.mouse.down()
-    const x = time === undefined ? from.x : rail.x + time * scale
+    const currentRail = await page.locator('.cut-timeline .rail').boundingBox()
+    const x = time === undefined ? from.x : currentRail.x + time * scale
     await page.mouse.move(x + offsetX, to.y + (offsetY ?? to.height / 2), { steps: 6 })
   }
 
@@ -111,29 +117,29 @@ export async function verifyTimelineDrag(page) {
   await insert.click()
   await timecode.fill('2')
   await timecode.press('Enter')
-  await drag(audio, lane('audio'), 2.12)
+  await drag(audio, lane('audio'), 2.08)
   await guide.getByText('播放头').waitFor()
   await page.mouse.up()
   const start = page.getByLabel('轨道起点（秒）')
   assert.equal(await start.inputValue(), '2')
 
   await magnet.click()
-  await drag(audio, lane('audio'), 2.12)
+  await drag(audio, lane('audio'), 2.08)
   await ghost.waitFor()
   assert.equal(await guide.count(), 0)
   await page.mouse.up()
-  assert.equal(await start.inputValue(), '2.12')
+  assert.equal(await start.inputValue(), '2.08')
 
-  await drag(audio, page.locator('.track-tail'), 2.12, 10)
+  await drag(audio, page.locator('.track-tail'), 2.08, 10)
   await marker.getByText('新建音频轨道').waitFor()
   await page.mouse.up()
   assert.equal(await page.locator('.lane[data-track-kind="audio"]').count(), 2)
   assert.equal(await lane('audio').locator('.timeline-clip').count(), 0)
-  assert.equal(await start.inputValue(), '2.12')
+  assert.equal(await start.inputValue(), '2.08')
   await page.waitForFunction(async () => {
     const { current } = await window.studio.initial()
     const { tracks, audio } = current.data.episodes[0]
     const lastTrack = tracks?.at(-1)
-    return lastTrack?.kind === 'audio' && audio[0]?.trackId === lastTrack.id && audio[0].start === 2.12
+    return lastTrack?.kind === 'audio' && audio[0]?.trackId === lastTrack.id && audio[0].start === 2.08
   })
 }
