@@ -1,13 +1,36 @@
 /* 写作台的分集与全文共享定位，侧栏只负责导航。 */
+.page.writing-work {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.writing-work > .studio-page-title {
+  flex: none;
+}
 .screenplay-desk {
+  flex: 1;
+  min-height: 0;
   display: grid;
   grid-template-columns: clamp(165px, 20cqw, 320px) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 14px;
-  align-items: start;
+  align-items: stretch;
 }
 .screenplay-desk .production-panel {
   margin: 0;
   min-width: 0;
+  min-height: 0;
+}
+.script-nav,
+.script-paper {
+  display: flex;
+  flex-direction: column;
+}
+.script-nav > header,
+.script-paper > header,
+.script-paper > footer {
+  flex: none;
 }
 .script-nav h2,
 .script-paper header h2 {
@@ -18,8 +41,16 @@
 .writing-episodes,
 .writing-outline {
   padding: 6px;
-  max-height: 230px;
+  min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
+}
+.writing-episodes {
+  flex: 0 1 auto;
+  max-height: 30%;
+}
+.writing-outline {
+  flex: 1;
 }
 .writing-episodes button,
 .writing-outline button {
@@ -43,8 +74,7 @@
   background: var(--selected);
 }
 .writing-episodes small,
-.writing-outline small,
-.outline-pages span {
+.writing-outline small {
   font: 10px var(--mono);
   color: var(--muted);
 }
@@ -72,12 +102,6 @@
   padding: 16px;
   color: var(--muted);
   font-size: 12px;
-}
-.outline-pages {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 5px 8px;
 }
 .script-paper.production-panel {
   overflow: visible;
@@ -113,7 +137,14 @@
   font-size: 12px;
 }
 .manuscript {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   padding: 22px clamp(16px, 4cqw, 58px) 16px;
+}
+.manuscript > :not(textarea) {
+  flex: none;
 }
 .manuscript-name > span,
 .writing-toolbar label {
@@ -151,15 +182,17 @@
 .manuscript textarea.script-text {
   display: block;
   width: 100%;
-  height: clamp(240px, calc(100dvh - 360px), 75dvh);
-  min-height: 160px;
+  flex: 1;
+  height: 0;
+  min-height: 0;
   margin-top: 8px;
   padding: 6px 0;
   border: 0;
   outline-offset: 4px;
   background: transparent;
   color: var(--ink);
-  resize: vertical;
+  resize: none;
+  overscroll-behavior: contain;
   font-family: ui-serif, 'Songti SC', 'Noto Serif CJK SC', Georgia, serif;
   font-size: 16px;
   line-height: 1.95;
@@ -487,6 +520,7 @@
 @container (max-width:660px) {
   .screenplay-desk {
     grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
     gap: 10px;
   }
   .script-nav {
@@ -523,10 +557,6 @@
     padding: 8px;
     font-size: 11px;
   }
-  .outline-pages {
-    grid-column: 1/-1;
-    justify-content: center;
-  }
   .pool-body {
     flex-direction: column;
   }
@@ -560,8 +590,29 @@
   }
 }
 
-.generation-shot, .pool-shot-target { display:grid; gap:8px; min-width:0 }
-.generation-shot { padding:10px 12px; border:1px solid var(--line); border-radius:6px }
-.generation-shot p { max-height:9em; overflow:auto; white-space:pre-wrap; font-size:12px; margin:0 }
-.pool-shot-target label { display:grid; gap:5px }
-.pool-shot-target .studio-select { width:100%; min-width:0 }
+.generation-shot,
+.pool-shot-target {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.generation-shot {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.generation-shot p {
+  max-height: 9em;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: 12px;
+  margin: 0;
+}
+.pool-shot-target label {
+  display: grid;
+  gap: 5px;
+}
+.pool-shot-target .studio-select {
+  width: 100%;
+  min-width: 0;
+}

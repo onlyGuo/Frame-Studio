@@ -186,6 +186,15 @@ export async function openProject(method, payload) {
     }
   })
 }
+/** 项目列表管理由主进程验证目录并确认实际删除范围。 */
+export function manageProject(root, action) {
+  return perform(action === 'delete' ? '正在删除项目文件' : '正在移除项目', async () => {
+    const recent = await api.manageProject({ root, action })
+    if (!recent) return
+    ui.recent = recent
+    notify(action === 'delete' ? '项目和文件已删除' : '项目已从列表移除')
+  })
+}
 /** 所有模型配置入口聚焦同一个设置窗口。 */
 export function openSettings() {
   return api.showSettings().catch(error)
@@ -309,6 +318,20 @@ export function answerAgentApproval(allowed) {
 }
 export function cancelAgent() {
   if (ui.agentTask?.status === 'running') return api.cancelAgent({ id: ui.agentTask.id })
+}
+/** 清空当前工程的会话及模型上下文，同时从编辑撤销快照中移除旧消息。 */
+export async function clearAgentHistory() {
+  if (!doc.value || starting || ui.busy) return false
+  return perform('正在清空聊天记录', async () => {
+    const state = await api.clearAgentHistory({ session: ui.session })
+    if (!state) return false
+    accept(state)
+    for (const snapshot of [...past, ...future]) snapshot.messages = []
+    if (ui.agentTask?.root === state.root) setAgent(null)
+    ui.agentEvents = []
+    notify('聊天记录已清空')
+    return true
+  })
 }
 let starting = false
 export async function chat(question) {

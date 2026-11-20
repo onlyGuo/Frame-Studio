@@ -311,6 +311,75 @@ function register() {
       if (!settings.data.recent.some((r) => r.root === p.root)) throw Error('最近工程不存在')
       return selectProject(Project.open(p.root))
     },
+    manageProject: async (p, window) => {
+      if (!['remove', 'delete'].includes(p.action)) throw Error('未知项目操作')
+      const listed = settings.data.recent.find((item) => item.root === p.root)
+      if (!listed) throw Error('项目已从列表移除')
+      if (p.action === 'delete') {
+        const target = Project.deletionTarget(listed.root)
+        const check = () => {
+          const contains = (root) => root && (root === target.root || root.startsWith(target.root + path.sep))
+          if (contains(settings.root)) throw Error('工程目录包含应用配置，无法删除')
+          if (settings.data.recent.some((item) => item.root !== target.root && contains(item.root)))
+            throw Error('工程目录包含列表中的其他项目，请先单独处理这些项目')
+          if (
+            (agent.controller && contains(agent.project?.root)) ||
+            (batch.controller && contains(batch.project?.root)) ||
+            (task && contains(active?.root))
+          )
+            throw Error('此项目仍有任务执行中，请先停止任务')
+          if (active?.root === target.root && (agent.controller || batch.controller))
+            throw Error('关闭项目窗口前，请先等待后台任务结束或停止任务')
+          if (active && active.root !== target.root && contains(active.root))
+            throw Error('工程目录包含正在打开的其他项目')
+        }
+        check()
+        const answer = await dialog.showMessageBox(window, {
+          type: 'warning',
+          title: '彻底删除项目和文件',
+          message: '彻底删除「' + target.title + '」？',
+          detail:
+            '将永久删除下列工程目录及其全部文件，包括素材、导出视频和聊天记录。此操作无法撤销。\n\n' +
+            target.root +
+            '\n\n已打开的项目窗口会先保存并关闭。',
+          buttons: ['取消', '彻底删除'],
+          defaultId: 0,
+          cancelId: 0,
+          noLink: true
+        })
+        if (answer.response !== 1) return null
+        check()
+        if (active?.root === target.root && win) {
+          const projectWindow = win
+          await new Promise((resolve, reject) => {
+            const closed = () => {
+              clearTimeout(timeout)
+              resolve()
+            }
+            const timeout = setTimeout(() => {
+              projectWindow.removeListener('closed', closed)
+              reject(Error('项目窗口尚未关闭，请检查保存状态后重试'))
+            }, 15000)
+            projectWindow.once('closed', closed)
+            projectWindow.close()
+          })
+        }
+        check()
+        if (active?.root === target.root) throw Error('项目已重新打开，请重试')
+        Project.deleteFiles(target)
+        if (agent.project?.root === target.root) {
+          agent.current = null
+          agent.project = null
+        }
+        if (batch.project?.root === target.root) {
+          batch.current = null
+          batch.project = null
+        }
+      }
+      const recent = settings.forget(listed.root)
+      for (const target of BrowserWindow.getAllWindows()) target.webContents.send('studio:recent', recent)
+      return recent
+    },
     closeProject: () => {
       active = null
       return settings.data.recent
@@ -394,6 +463,34 @@ function register() {
       return { mode: nativeTheme.themeSource, dark: nativeTheme.shouldUseDarkColors }
     },
     agentHistory: (p) => transcriptProject(p.session).agentHistory(),
+    clearAgentHistory: async (p, window) => {
+      const project = projectFor(p.session)
+      const checkIdle = () => {
+        if (agent.controller && agent.project?.root === project.root)
+          throw Error('请先停止当前工程的助手任务，再清空聊天记录')
+      }
+      checkIdle()
+      const answer = await dialog.showMessageBox(window, {
+        type: 'warning',
+        title: '清空聊天记录',
+        message: '清空「' + project.data.title + '」的全部聊天记录？',
+        detail:
+          '将删除聊天消息、执行记录和模型上下文。此操作无法撤销。工程中的剧本、分镜、素材与剪辑会保留。',
+        buttons: ['取消', '清空记录'],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true
+      })
+      if (answer.response !== 1) return null
+      if (projectFor(p.session) !== project) throw Error('工程已切换，请重新操作')
+      checkIdle()
+      const state = project.clearChat()
+      if (agent.project?.root === project.root) {
+        agent.current = null
+        agent.project = null
+      }
+      return state
+    },
     agentTrace: (p) => transcriptProject(p.session).agentTrace(p.id),
     skills: () => skills.list(),
     installSkill: async () => {
@@ -483,6 +580,7 @@ function register() {
     'create',
     'open',
     'recent',
+    'manageProject',
     'restore',
     'settings',
     'agentPreferences',

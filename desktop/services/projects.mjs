@@ -28,6 +28,31 @@ function newRoot(parent, title) {
 }
 /** 管理一个打开的工程及其当前持久化版本。 */
 export class Project {
+  /** 删除前验证工程目录与清单身份，拒绝符号链接及被替换的目录。 */
+  static deletionTarget(root) {
+    if (typeof root !== 'string' || !path.isAbsolute(root)) throw Error('无效的工程目录')
+    const canonical = fs.realpathSync(root)
+    if (
+      canonical !== path.resolve(root) ||
+      canonical === path.parse(canonical).root ||
+      canonical === fs.realpathSync(os.homedir())
+    )
+      throw Error('无法删除此目录')
+    const data = validateProject(readJson(localFile(canonical, manifest)))
+    const stat = fs.statSync(canonical)
+    return { root: canonical, id: data.id, title: data.title, device: stat.dev, inode: stat.ino }
+  }
+  /** 先清理工程内容，最后删除清单，失败时保留清单供重试定位。 */
+  static deleteFiles(target) {
+    const current = Project.deletionTarget(target.root)
+    if (current.id !== target.id || current.device !== target.device || current.inode !== target.inode)
+      throw Error('工程目录已改变，请重新确认删除')
+    for (const name of fs.readdirSync(target.root)) {
+      if (name === manifest) continue
+      fs.rmSync(path.join(target.root, name), { recursive: true, force: true, maxRetries: 3 })
+    }
+    fs.rmSync(target.root, { recursive: true, maxRetries: 3 })
+  }
   constructor(root, data) {
     this.root = fs.realpathSync(root)
     this.data = validateProject(data)
@@ -91,6 +116,34 @@ export class Project {
   }
   agentTrace(id) {
     return this.runs.trace(id, this.data.messages)
+  }
+  /** 暂存聊天文件后一次提交空会话，失败时恢复原记录；工程内容继续保留。 */
+  clearChat() {
+    const files = [...this.runs.files(), contextFile, 'last-run.json']
+      .filter((name) => fs.existsSync(path.join(this.root, name)))
+      .map((name) => localFile(this.root, name))
+    const temporary = fs.mkdtempSync(path.join(this.root, '.clear-chat-'))
+    const moved = []
+    try {
+      for (const [index, file] of files.entries()) {
+        const backup = path.join(temporary, String(index))
+        fs.renameSync(file, backup)
+        moved.push([file, backup])
+      }
+      this.save({ ...this.data, messages: [] })
+    } catch (error) {
+      for (const [file, backup] of moved.reverse()) fs.renameSync(backup, file)
+      fs.rmSync(temporary, { recursive: true, force: true })
+      throw error
+    }
+    this.runs.summaries.clear()
+    // 会话已提交，临时文件清理失败不回滚工程版本。
+    try {
+      fs.rmSync(temporary, { recursive: true, force: true })
+    } catch (error) {
+      console.error('清理已移除的聊天临时文件失败', error.code)
+    }
+    return this.snapshot()
   }
   /** 构造发送给桌面界面的工程快照。 */
   snapshot() {

@@ -4,6 +4,7 @@ import { openSync, readSync, closeSync } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { fileURLToPath } from 'node:url'
+import { renderSegments, timelineEnd } from '../../shared/timeline.mjs'
 import { outputSize, uid } from '../../shared/model.mjs'
 import { localDir } from '../core/files.mjs'
 const source = fileURLToPath(import.meta.url)
@@ -124,10 +125,16 @@ export async function decodeReferenceImage(file, signal) {
 export async function renderEpisode(project, episodeId, captionSource, signal, progress) {
   const doc = structuredClone(project.data)
   const episode = doc.episodes.find((e) => e.id === episodeId)
-  if (!episode?.clips.length) throw Error('请先添加画面片段')
+  if (!episode || !timelineEnd(episode)) throw Error('请先添加片段')
+  const segments =
+    episode.captions ||
+    episode.clips.some((c) => c.start !== undefined) ||
+    timelineEnd(episode) > episode.clips.reduce((sum, c) => sum + c.duration, 0)
+      ? renderSegments(episode, doc.fps)
+      : episode.clips
   const captions =
     typeof captionSource === 'function'
-      ? await captionSource(doc.ratio, doc.quality, episode.clips)
+      ? await captionSource(doc.ratio, doc.quality, segments)
       : captionSource
   signal?.throwIfAborted()
   const [w, h] = outputSize(doc.ratio, doc.quality)
@@ -136,15 +143,23 @@ export async function renderEpisode(project, episodeId, captionSource, signal, p
   const pending = output + '.tmp.mp4'
   const find = (id) => doc.assets.find((a) => a.id === id)
   try {
-    for (const [i, clip] of episode.clips.entries()) {
-      progress('正在编码片段 ' + (i + 1) + ' / ' + episode.clips.length)
-      const asset = find(clip.assetId),
-        source = project.assetPath(asset)
-      const { audio } = await inspect(source, asset.kind)
+    for (const [i, clip] of segments.entries()) {
+      progress('正在编码片段 ' + (i + 1) + ' / ' + segments.length)
+      const asset = find(clip.assetId)
+      const source = asset && project.assetPath(asset)
+      const { audio } = asset ? await inspect(source, asset.kind, signal) : { audio: false }
       const args = ['-y', '-loglevel', 'error', '-protocol_whitelist', 'file,pipe']
-      if (asset.kind === 'image') args.push('-loop', '1', '-framerate', String(doc.fps))
+      if (!asset) args.push('-f', 'lavfi')
+      else if (asset.kind === 'image') args.push('-loop', '1', '-framerate', String(doc.fps))
       else args.push('-ss', String(clip.trim))
-      args.push('-i', source, '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo')
+      args.push(
+        '-i',
+        source || 'color=c=black:s=' + w + 'x' + h + ':r=' + doc.fps,
+        '-f',
+        'lavfi',
+        '-i',
+        'anullsrc=r=48000:cl=stereo'
+      )
       let vf =
         '[0:v]fps=' +
         doc.fps +
@@ -192,10 +207,7 @@ export async function renderEpisode(project, episodeId, captionSource, signal, p
       )
       await execute(args, signal)
     }
-    await fs.writeFile(
-      path.join(dir, 'list.txt'),
-      episode.clips.map((_, i) => "file '" + i + ".mp4'").join('\n')
-    )
+    await fs.writeFile(path.join(dir, 'list.txt'), segments.map((_, i) => "file '" + i + ".mp4'").join('\n'))
     const args = ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '1', '-i', path.join(dir, 'list.txt')]
     const filters = []
     for (const [i, track] of episode.audio.entries()) {

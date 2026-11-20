@@ -154,4 +154,16 @@ export class Settings {
     ].slice(0, 16)
     this.save()
   }
+  /** 移除本机列表索引，持久化失败时恢复原列表。 */
+  forget(root) {
+    const previous = this.data.recent
+    this.data.recent = previous.filter((item) => item.root !== root)
+    try {
+      this.save()
+    } catch (error) {
+      this.data.recent = previous
+      throw error
+    }
+    return this.data.recent
+  }
 }

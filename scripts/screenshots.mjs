@@ -225,7 +225,7 @@ try {
   await click('素材库')
   await capture('05-media')
   await click('剪辑台')
-  await page.locator('button[draggable="true"][title^="雾中灯光"]').click()
+  await page.locator('.lane[data-track-kind="visual"] .timeline-clip[title^="雾中灯光"]').click()
   const timecode = page.getByLabel('定位时间码')
   await timecode.fill('00:00:11:00')
   await timecode.press('Enter')

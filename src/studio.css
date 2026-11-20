@@ -409,7 +409,7 @@
 .timeline-dock {
   flex: none;
   min-height: 130px;
-  height: clamp(130px, var(--timeline-height, 29%), max(130px, calc(100% - 306px)));
+  height: clamp(130px, var(--timeline-height, 33%), max(130px, calc(100% - 306px)));
 }
 .program-monitor {
   display: flex;
@@ -707,7 +707,18 @@
   align-items: center;
   gap: 9px;
 }
+.cut-tools > div:first-child {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+.cut-tools > div:first-child > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .cut-tools h2 {
+  flex: none;
   font-size: 13px;
   color: var(--ink);
 }
@@ -731,134 +742,278 @@
   width: 62px;
   height: 14px;
 }
+.cut-tools .cut-magnet[aria-pressed='true'] {
+  color: var(--accent-text);
+  background: var(--selected);
+  border-color: color-mix(in srgb, var(--accent-text) 42%, var(--edge));
+}
+.cut-tools .cut-drag-status {
+  color: var(--accent-text);
+  font-variant-numeric: tabular-nums;
+}
 .track-layout {
-  --visual-track: var(--accent-text);
+  --ruler-height: 30px;
+  --visual-track: var(--violet);
   --caption-track: var(--amber);
   --audio-track: var(--teal);
+  --track-tone: var(--visual-track);
   display: grid;
-  grid-template-columns: 76px max-content;
+  grid-template-columns: 146px max-content;
   min-width: max-content;
+  min-height: 100%;
+}
+.track-layout :is([data-track-kind='caption'], [data-preview-kind='caption'] > .rail) {
+  --track-tone: var(--caption-track);
+}
+.track-layout :is([data-track-kind='audio'], [data-preview-kind='audio'] > .rail) {
+  --track-tone: var(--audio-track);
+}
+.track-layout [data-track-kind='visual'] {
+  --track-tone: var(--visual-track);
 }
 .track-heads {
   position: sticky;
   left: 0;
-  z-index: 3;
+  z-index: 5;
   background: var(--well);
-  border-right: 1px solid var(--line);
-}
-.track-clock,
-.track-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding-left: 8px;
-  font-size: 10px;
-  color: var(--label);
+  border-right: 1px solid var(--edge);
+  box-shadow: 4px 0 14px color-mix(in srgb, var(--workspace) 62%, transparent);
 }
 .track-clock {
-  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: var(--ruler-height);
+  padding: 0 11px;
+  border-bottom: 1px solid var(--edge);
   color: var(--muted);
   background: var(--well);
   position: sticky;
   z-index: 1;
   top: 0;
+  font-size: 10px;
+  font-family: inherit;
+  font-weight: 650;
 }
 .track-head {
+  position: relative;
+  display: grid;
+  grid-template-columns: 25px minmax(0, 1fr) auto 12px;
+  gap: 7px;
   width: 100%;
-  justify-content: flex-start;
-  border-top: 1px solid var(--line);
+  padding: 0 9px;
+  align-content: center;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(100deg, color-mix(in srgb, var(--track-tone) 7%, var(--surface)), var(--well));
+  color: var(--label);
 }
-.track-head:hover {
-  background: var(--hover);
+.track-head::before {
+  content: '';
+  position: absolute;
+  inset: 8px auto 8px 0;
+  width: 2px;
+  border-radius: 0 4px 4px 0;
+  background: var(--track-tone);
+  opacity: 0.52;
+  transition: opacity 140ms ease;
+}
+.track-head:is(:hover, .drop-active) {
+  background: color-mix(in srgb, var(--track-tone) 14%, var(--well));
+}
+.track-head:is(:hover, .drop-active)::before {
+  opacity: 1;
+}
+.track-head:focus-visible {
+  outline-offset: -2px;
+}
+.track-icon {
+  display: grid;
+  place-items: center;
+  height: 25px;
+  border-radius: 7px;
+  color: var(--track-tone);
+  background: color-mix(in srgb, var(--track-tone) 12%, var(--surface));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--track-tone) 22%, var(--line));
+}
+.track-name {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  white-space: nowrap;
+}
+.track-name strong {
+  flex: none;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 660;
+}
+.track-head b,
+.track-count {
+  font: 10px var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
 }
 .track-head b {
-  color: var(--visual-track);
-  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.track-head.subtitle b {
-  color: var(--caption-track);
+.track-count {
+  min-width: 17px;
+  padding: 2px 3px;
+  border-radius: 5px;
+  text-align: center;
+  background: var(--surface);
 }
-.track-head.audio b {
-  color: color-mix(in srgb, var(--audio-track) 85%, var(--ink));
+.track-options {
+  color: var(--muted);
 }
 .track-scroll {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
   min-width: 0;
   scrollbar-width: thin;
   scrollbar-color: var(--edge) var(--surface);
 }
+.track-scroll:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+.track-scroll.is-dragging,
+.track-scroll.is-dragging .timeline-clip {
+  cursor: grabbing;
+}
 .cut-timeline .rail {
-  min-width: 100%;
+  display: flex;
+  flex-direction: column;
   position: relative;
+  isolation: isolate;
 }
 .cut-timeline .ruler {
   position: sticky;
   top: 0;
-  z-index: 2;
-  height: 26px;
+  z-index: 4;
+  flex: none;
+  height: var(--ruler-height);
+  border-bottom: 1px solid var(--edge);
   touch-action: none;
-  background: repeating-linear-gradient(90deg, var(--subtle) 0 1px, transparent 1px calc(var(--tick-gap) / 5))
-    left bottom / 100% 4px no-repeat var(--surface);
+  background:
+    repeating-linear-gradient(90deg, var(--muted) 0 1px, transparent 1px var(--tick-gap)) left bottom / 100%
+      8px no-repeat,
+    repeating-linear-gradient(90deg, var(--edge) 0 1px, transparent 1px calc(var(--tick-gap) / 5)) left
+      bottom / 100% 4px no-repeat var(--well);
 }
 .cut-timeline .ruler span {
   font: 10px var(--mono);
   color: var(--muted);
-  top: 4px;
-  word-break: keep-all;
+  top: 5px;
   white-space: nowrap;
-  padding-left: 2px;
+  padding-left: 5px;
 }
-.cut-timeline .lane {
-  --clip-tone: var(--visual-track);
-  height: 34px;
+.cut-timeline .lane,
+.track-tail {
+  flex: none;
   margin: 0;
   border-radius: 0;
-  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
   background: repeating-linear-gradient(90deg, var(--line) 0 1px, transparent 1px var(--tick-gap))
-    var(--workspace);
+    color-mix(in srgb, var(--track-tone) 4%, var(--workspace));
 }
-.cut-timeline .lane button {
-  bottom: auto;
+.cut-timeline .lane {
+  transition:
+    box-shadow 155ms ease,
+    background-color 155ms ease;
+}
+.cut-timeline .lane.drop-active {
+  background-color: color-mix(in srgb, var(--track-tone) 14%, var(--workspace));
+  box-shadow:
+    inset 0 1px var(--track-tone),
+    inset 0 -1px var(--track-tone);
+}
+.track-tail {
+  flex: 1 0 32px;
+  border: 0;
+  background-color: var(--workspace);
+}
+.cut-timeline .timeline-clip,
+.clip-ghost {
+  position: absolute;
   display: flex;
-  justify-content: flex-start;
   align-items: center;
-  gap: 6px;
-  padding: 3px 6px;
-  border: 1px solid color-mix(in srgb, var(--clip-tone) 38%, var(--edge));
-  background: color-mix(in srgb, var(--clip-tone) 22%, var(--surface));
+  justify-content: flex-start;
+  bottom: auto;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
   color: var(--ink);
-  border-radius: 3px;
   min-width: 1px;
-  font-size: 11px;
-  text-overflow: ellipsis;
   overflow: hidden;
+  font-size: 11px;
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--track-tone) 27%, var(--surface)),
+    color-mix(in srgb, var(--track-tone) 17%, var(--surface))
+  );
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--track-tone) 48%, var(--edge)),
+    inset 2px 0 var(--track-tone);
 }
-.cut-timeline .lane button img {
-  height: 100%;
-  max-width: 50px;
+.cut-timeline .timeline-clip {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  translate: var(--clip-shift) 0;
+  transition:
+    opacity 130ms ease,
+    box-shadow 130ms ease;
+}
+.cut-timeline .is-dragging .timeline-clip {
+  transition:
+    translate 155ms cubic-bezier(0.2, 0.75, 0.22, 1),
+    opacity 130ms ease,
+    box-shadow 130ms ease;
+}
+.cut-timeline .timeline-clip img {
+  height: calc(100% - 8px);
+  width: 45px;
+  flex: none;
+  margin-left: 4px;
   object-fit: cover;
-  border-radius: 2px;
+  border-radius: 3px;
+  pointer-events: none;
 }
-.cut-timeline .lane button span {
+.timeline-clip span,
+.clip-ghost span {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+  min-width: 0;
+  padding-inline: 7px 5px;
 }
-.cut-timeline .caption-lane {
-  --clip-tone: var(--caption-track);
+.timeline-clip img + span,
+.clip-ghost svg + span {
+  padding-left: 0;
 }
-.cut-timeline .sound {
-  --clip-tone: var(--audio-track);
+.cut-timeline .timeline-clip:is(:hover, .selected) {
+  box-shadow:
+    inset 0 0 0 2px var(--track-tone),
+    inset 3px 0 var(--track-tone);
+  outline: 0;
 }
-.cut-timeline .lane button.selected {
+.cut-timeline .timeline-clip:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: -2px;
 }
+.cut-timeline .timeline-clip.drag-source {
+  opacity: 0.26;
+}
 .cut-timeline .playhead {
-  top: 26px;
+  top: var(--ruler-height);
   bottom: 0;
+  z-index: 1;
   background: var(--accent-text);
   width: 1px;
 }
@@ -868,12 +1023,99 @@
   translate: -50% 0;
   background: var(--accent-text);
   width: 13px;
-  height: 10px;
+  height: 11px;
   padding: 0;
   clip-path: polygon(0 0, 100% 0, 100% 45%, 50% 100%, 0 45%);
 }
 .playhead-handle:is(:hover, :focus-visible) {
   background: var(--focus);
+}
+.clip-ghost,
+.track-insert-preview,
+.snap-guide {
+  position: absolute;
+  pointer-events: none;
+}
+.clip-ghost {
+  z-index: 2;
+  box-shadow:
+    inset 0 0 0 1px var(--track-tone),
+    0 5px 16px color-mix(in srgb, var(--track-tone) 32%, transparent);
+  animation: clip-lift 155ms ease-out both;
+  transition: top 145ms cubic-bezier(0.2, 0.75, 0.22, 1);
+}
+.clip-ghost svg {
+  margin-left: 7px;
+  flex: none;
+  color: var(--track-tone);
+}
+.track-insert-preview {
+  inset-inline: 0;
+  z-index: 3;
+  height: 2px;
+  background: var(--track-tone);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--track-tone) 58%, transparent);
+  transition: top 145ms cubic-bezier(0.2, 0.75, 0.22, 1);
+  animation: clip-lift 155ms ease-out both;
+}
+.track-insert-preview > span,
+.snap-guide > span {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: max-content;
+  padding: 2px 6px;
+  border-radius: 5px;
+  color: var(--ink);
+  border: 1px solid var(--track-tone);
+  background: var(--surface);
+  font-size: 10px;
+}
+.track-insert-preview > span {
+  left: calc(var(--visible-left) + 7px);
+  transform: translateY(-50%);
+}
+.snap-guide {
+  z-index: 3;
+  inset-block: var(--ruler-height) 0;
+  width: 1px;
+  background: var(--positive);
+  box-shadow: 0 0 7px var(--positive);
+  animation: snap-in 160ms ease-out both;
+}
+.snap-guide > span {
+  top: 3px;
+  left: 4px;
+  border-color: var(--positive);
+}
+@keyframes clip-lift {
+  from {
+    opacity: 0.25;
+    scale: 1 0.85;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+@keyframes snap-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cut-timeline
+    .track-scroll
+    .track-layout
+    :is(.timeline-clip, .clip-ghost, .track-insert-preview, .snap-guide, .lane),
+  .track-head::before {
+    animation: none;
+    transition: none;
+  }
 }
 .timeline-menu {
   position: fixed;
@@ -965,11 +1207,19 @@
     font-size: 20px;
   }
   .track-layout {
-    grid-template-columns: 52px max-content;
+    grid-template-columns: 93px max-content;
   }
   .track-head {
-    gap: 3px;
-    padding-left: 3px;
+    grid-template-columns: 23px minmax(0, 1fr) 11px;
+    gap: 4px;
+    padding-inline: 6px;
+  }
+  .track-icon {
+    height: 23px;
+  }
+  .track-name strong,
+  .track-count {
+    display: none;
   }
   .studio-page-title {
     gap: 6px;
@@ -1216,4 +1466,25 @@ label.sidebar-search input[type='search'] {
   .launcher {
     grid-template-columns: 128px minmax(0, 1fr);
   }
+}
+
+/* 片段两端的裁切握柄只在交互时强调。 */
+.clip-trim {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
+  opacity: 0;
+  background: var(--track-tone);
+  transition: opacity 120ms;
+}
+.clip-trim-start {
+  left: 0;
+}
+.clip-trim-end {
+  right: 0;
+}
+.timeline-clip:is(:hover, .selected) .clip-trim {
+  opacity: 0.65;
 }

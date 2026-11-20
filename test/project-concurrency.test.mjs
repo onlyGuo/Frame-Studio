@@ -160,3 +160,54 @@ test('同一分集并行导出分别使用各自发起时的字幕、画幅及�
   assert.ok(Math.abs((await probe(secondFile, 'video')) - 0.8) < 0.05)
   assert.equal((await fs.readdir(path.join(project.root, 'exports'))).length, 2)
 })
+
+test('独立时间线保留黑场、重叠优先级、字幕与音频尾部，并可实际编码', async (t) => {
+  const { materializeTimeline, pictureAt, renderSegments, timelineEnd } = await import(
+    '../shared/timeline.mjs'
+  )
+  const { project, image, signal } = await fixture(t)
+  const tone = path.join(path.dirname(image), 'tone.wav')
+  execFileSync(ffmpegPath, [
+    '-loglevel',
+    'error',
+    '-f',
+    'lavfi',
+    '-i',
+    'sine=frequency=440',
+    '-t',
+    '0.4',
+    tone
+  ])
+  const [asset, sound] = await project.addMedia([image, tone], probe)
+  const data = structuredClone(project.data)
+  const e = data.episodes[0]
+  e.clips = [{ ...makeClip(asset.id, 0.4), caption: '独立字幕' }, makeClip(asset.id, 0.4)]
+  materializeTimeline(e)
+  assert.equal(e.captions.length, 1)
+  assert.equal(e.captions[0].start, 0)
+  e.clips[0].start = 0.2
+  e.clips[1].start = 0.4
+  assert.equal(e.captions[0].start, 0)
+  assert.equal(pictureAt(e, 0.1), undefined)
+  assert.equal(pictureAt(e, 0.5).id, e.clips[1].id)
+  e.captions[0].start = 0.8
+  e.captions[0].duration = 0.4
+  assert.ok(Math.abs(timelineEnd(e) - 1.2) < 1e-8)
+  e.audio = [{ id: 'tail', assetId: sound.id, start: 1.2, duration: 0.4, trim: 0, volume: 0.7 }]
+  const parts = renderSegments(e)
+  assert.equal(parts[0].assetId, undefined)
+  assert.equal(parts.at(-1).assetId, undefined)
+  assert.ok(parts.some((part) => !part.assetId && part.caption === '独立字幕'))
+  project.save(data)
+  const overlay = (await fs.readFile(image)).toString('base64')
+  const file = await renderEpisode(
+    project,
+    e.id,
+    async (_ratio, _quality, rows) => Object.fromEntries(rows.map((c) => [c.id, overlay])),
+    signal,
+    () => {}
+  )
+  assert.ok(Math.abs((await probe(file, 'video')) - 1.6) < 0.08)
+  const reopened = Project.open(project.root)
+  assert.deepEqual(reopened.data.episodes[0].captions, e.captions)
+})

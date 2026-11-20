@@ -9,6 +9,7 @@ import {
   cancelAgent,
   answerAgentApproval,
   openProject,
+  clearAgentHistory,
   openSettings
 } from '../store.js'
 import Glyph from './Glyph.vue'
@@ -99,11 +100,12 @@ const historyById = computed(
     )
 )
 const historyError = ref('')
+const historyVersion = ref(0)
 const approval = computed(() => (displayedRun.value ? task.value.approval : null))
 
 /** 会话切换时仅请求小型回执；工具参数在展开所选轮次时读取。 */
 watch(
-  [mediaSession, () => ui.agent, () => task.value?.status],
+  [mediaSession, () => ui.agent, () => task.value?.status, historyVersion],
   async ([session, visible], _, cleanup) => {
     let current = true
     cleanup(() => {
@@ -229,6 +231,19 @@ function viewScope(value) {
 function toggleHistory() {
   historyOpen.value = !historyOpen.value
 }
+/** 确认成功后重置目录和阅读位置，重新加载已清空的执行记录。 */
+async function clearChat() {
+  if (viewingElsewhere.value || submitting.value || displayedRun.value) return
+  if (await clearAgentHistory()) {
+    historyRows.value = []
+    historyVersion.value++
+    historyOpen.value = false
+    positions.delete(viewRoot.value)
+    following.value = true
+    await nextTick()
+    composer.value?.focus()
+  }
+}
 /** 优先关闭会话历史，保留外层快捷键收起整个面板的行为。 */
 function localEscape(event) {
   if (event.key !== 'Escape' || (!historyOpen.value && !focusMode.value)) return
@@ -308,6 +323,15 @@ onBeforeUnmount(() => window.removeEventListener('resize', syncViewport))
         @click="toggleHistory"
       >
         <Glyph name="clock" :size="16" />
+      </button>
+      <button
+        class="ac-icon"
+        title="清空当前工程聊天记录"
+        aria-label="清空聊天记录"
+        :disabled="!hasContext || viewingElsewhere || displayedRun || submitting || !!ui.busy"
+        @click="clearChat"
+      >
+        <Glyph name="trash" :size="16" />
       </button>
       <button
         class="ac-icon"

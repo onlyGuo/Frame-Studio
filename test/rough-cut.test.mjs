@@ -4,7 +4,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { makeAudio, makeClip, makeProject, makeShot, validateProject } from '../shared/model.mjs'
-import { roughCut } from '../shared/rough-cut.mjs'
+import { roughCut, clipFromShot } from '../shared/rough-cut.mjs'
 import { executeTool } from '../desktop/agent/tools.mjs'
 import { Project } from '../desktop/services/projects.mjs'
 
@@ -16,6 +16,26 @@ const asset = (id, kind = 'video', duration = 4) => ({
   name: id
 })
 const shot = (id, assetId) => ({ ...makeShot(), id, assetId, title: id, dialogue: '字幕' + id, duration: 6 })
+
+test('对白转字幕清除角色标签，分镜保留原文，正文人名及冒号保留', () => {
+  const cards = [{ id: 'bai', type: '角色', name: '白小纯' }]
+  const examples = [
+    ['白小纯：父老乡亲们，我要去修仙了，可我舍不得你们啊。', '父老乡亲们，我要去修仙了，可我舍不得你们啊。'],
+    ['@{card:bai:robe}：别走。\n旁白：天亮了。', '别走。\n天亮了。'],
+    ['白小纯（低声）：记住：白小纯会回来。', '记住：白小纯会回来。'],
+    ['@{card:deleted}：我会回来。白小纯：等你！', '我会回来。等你！'],
+    ['注意：现在是12:30。', '注意：现在是12:30。'],
+    ['我叫白小纯。', '我叫白小纯。'],
+    ['', '']
+  ]
+  for (const [dialogue, expected] of examples) {
+    const source = { ...shot('one', 'v'), dialogue }
+    assert.equal(clipFromShot(source, asset('v'), cards).caption, expected)
+    const e = { clips: [], shots: [source] }
+    assert.equal(roughCut(e, [asset('v')], cards).clips[0].caption, expected)
+    assert.equal(source.dialogue, dialogue)
+  }
+})
 
 test('已有画面手工调序、裁切、音频与前后插片保留，复用同一源的分镜分别补入', () => {
   const p = makeProject('手工精剪'),

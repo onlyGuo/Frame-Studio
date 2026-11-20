@@ -4,6 +4,13 @@ import { ui, doc, episode, asset, media, editEpisode, api, perform, importMedia,
 import { makeAudio, makeClip, sequence, uid } from '../../shared/model.mjs'
 import { assignDefaultTracks, clipTrack, removeTrack, timelineTracks } from '../../shared/timeline-tracks.mjs'
 import { roughCut } from '../../shared/rough-cut.mjs'
+import {
+  materializeTimeline,
+  timelineCaptions,
+  timelineEnd,
+  pictureAt,
+  captionsAt
+} from '../../shared/timeline.mjs'
 import { captionImage } from '../captions.js'
 import Glyph from '../components/Glyph.vue'
 import DockDivider from '../components/studio/DockDivider.vue'
@@ -23,15 +30,8 @@ const pos = ref(0),
   mediaSearch = ref(''),
   safeArea = ref(false)
 const rail = computed(() => sequence(episode.value.clips))
-const pictureEnd = computed(() => rail.value.at(-1)?.end || 0)
-const total = computed(() =>
-  episode.value.audio.reduce((end, clip) => Math.max(end, clip.start + clip.duration), pictureEnd.value)
-)
-const current = computed(
-  () =>
-    rail.value.find((c) => pos.value >= c.start && pos.value < c.end) ||
-    (pos.value === pictureEnd.value && pictureEnd.value === total.value ? rail.value.at(-1) : null)
-)
+const total = computed(() => timelineEnd(episode.value))
+const current = computed(() => pictureAt(episode.value, pos.value))
 const tracks = computed(() =>
   timelineTracks(episode.value).map((track, index, list) => ({
     ...track,
@@ -41,7 +41,8 @@ const tracks = computed(() =>
   }))
 )
 const rows = computed(() => [
-  ...rail.value.flatMap((clip) => [item('visual', clip), ...(clip.caption ? [item('caption', clip)] : [])]),
+  ...rail.value.map((clip) => item('visual', clip)),
+  ...timelineCaptions(episode.value).map((clip) => item('caption', clip)),
   ...episode.value.audio.map((clip) => item('audio', clip))
 ])
 function item(kind, clip) {
@@ -55,7 +56,9 @@ const pickedItem = computed(() => (selection.value.length === 1 ? selection.valu
 const row = computed(() => pickedItem.value?.clip)
 const isAudio = computed(() => pickedItem.value?.kind === 'audio')
 const isCaption = computed(() => pickedItem.value?.kind === 'caption')
-const caption = computed(() => captionImage(current.value?.caption, doc.value.ratio, doc.value.quality))
+const caption = computed(() =>
+  captionImage(captionsAt(episode.value, pos.value), doc.value.ratio, doc.value.quality)
+)
 const picked = computed(() => asset(row.value?.assetId))
 const position = row
 const captionTracks = computed(() =>
@@ -184,7 +187,10 @@ function select(entry, event) {
   } else {
     selected.value = [entry.key]
     anchor.value = entry.key
-    if (!event || event.type !== 'contextmenu') locateFrame(entry.clip.start)
+    if (!event || event.type !== 'contextmenu') {
+      stop()
+      seek(entry.clip.start)
+    }
   }
 }
 function selectAll() {
@@ -208,14 +214,15 @@ function step(n) {
 function trimToHead(trimStart) {
   if (!interior.value) return
   stop()
-  const collection = isAudio.value ? 'audio' : 'clips'
+  const collection = isCaption.value ? 'captions' : isAudio.value ? 'audio' : 'clips'
   const id = row.value.id,
     delta = cutOffset.value
   const aligned = editEpisode((e) => {
+    materializeTimeline(e)
     const clip = e[collection].find((c) => c.id === id)
     if (trimStart) {
       clip.duration -= delta
-      if (asset(clip.assetId).kind !== 'image') clip.trim += delta
+      if (clip.assetId && asset(clip.assetId).kind !== 'image') clip.trim += delta
       if ('start' in clip) clip.start += delta
     } else clip.duration = delta
   })
@@ -225,9 +232,10 @@ function trimToHead(trimStart) {
 function patch(key, value) {
   if (!row.value) return
   stop()
-  const collection = isAudio.value ? 'audio' : 'clips'
+  const collection = isCaption.value ? 'captions' : isAudio.value ? 'audio' : 'clips'
   const id = row.value.id
   editEpisode((e) => {
+    materializeTimeline(e)
     const c = e[collection].find((c) => c.id === id)
     c[key] = value
     if (key === 'caption' && value) assignDefaultTracks(e)
@@ -237,10 +245,33 @@ function add() {
   const a = asset(source.value)
   if (!insertable.value) return
   const audio = a.kind === 'audio'
-  const clip = audio ? { ...makeAudio(a.id, a.duration), start: pos.value } : makeClip(a.id, a.duration || 5)
+  const clip = {
+    ...(audio ? makeAudio(a.id, a.duration) : makeClip(a.id, a.duration || 5)),
+    start: pos.value
+  }
   if (destination.value) clip.trackId = destination.value.id
-  if (editEpisode((e) => (audio ? e.audio : e.clips).push(clip)))
+  if (
+    editEpisode((e) => {
+      materializeTimeline(e)
+      ;(audio ? e.audio : e.clips).push(clip)
+    })
+  )
     select(rows.value.find((row) => row.clip.id === clip.id))
+}
+function addCaption() {
+  const id = uid()
+  editEpisode((e) => {
+    materializeTimeline(e)
+    let track = timelineTracks(e).find((t) => t.kind === 'caption')
+    if (!track) {
+      if (timelineTracks(e).length >= 64) throw Error('轨道数量已达上限')
+      assignDefaultTracks(e)
+      track = { id: uid(), kind: 'caption' }
+      e.tracks.push(track)
+    }
+    e.captions.push({ id, caption: '新字幕', start: pos.value, duration: 3, trackId: track.id })
+  })
+  select(rows.value.find((r) => r.key === 'caption:' + id))
 }
 function addTrack(kind, below) {
   if (tracks.value.length >= 64) return
@@ -253,7 +284,10 @@ function addTrack(kind, below) {
 }
 function deleteTrack(track) {
   stop()
-  editEpisode((e) => removeTrack(e, track))
+  editEpisode((e) => {
+    materializeTimeline(e)
+    removeTrack(e, track)
+  })
 }
 function insertOnTrack(track) {
   targetTrack.value = track.id
@@ -263,41 +297,82 @@ function moveSelectionTo(track) {
   const ids = new Set(selection.value.filter((row) => row.kind === track.kind).map((row) => row.clip.id))
   if (!ids.size) return
   editEpisode((e) => {
+    materializeTimeline(e)
     assignDefaultTracks(e)
-    for (const clip of track.kind === 'audio' ? e.audio : e.clips)
-      if (ids.has(clip.id)) clip[track.kind === 'caption' ? 'captionTrackId' : 'trackId'] = track.id
+    for (const clip of track.kind === 'caption' ? e.captions : track.kind === 'audio' ? e.audio : e.clips)
+      if (ids.has(clip.id)) clip.trackId = track.id
   })
 }
-function move(index, to) {
-  if (to < 0 || to >= rail.value.length || index < 0) return
+/** 片段换轨、轨道创建和时间变化共用一次工程提交与撤销。 */
+function dropClip({ item, target, placement }) {
+  const entry = rows.value.find((row) => row.key === item.key)
+  if (!entry) return
+  const { kind, clip } = entry
+  const destination = target.track && tracks.value.find((track) => track.id === target.track.id)
+  if (target.track && destination?.kind !== kind) return
+  if (!destination && tracks.value.length >= 64) return
+  const created = destination ? null : { id: uid(), kind }
+  const trackId = destination?.id || created.id
   stop()
-  editEpisode((e) => e.clips.splice(to, 0, e.clips.splice(index, 1)[0]))
+  const changed = editEpisode((e) => {
+    materializeTimeline(e)
+    if (created) {
+      assignDefaultTracks(e)
+      const index = e.tracks.findIndex((track) => track.id === target.beforeTrackId)
+      e.tracks.splice(index < 0 ? e.tracks.length : index, 0, created)
+    }
+    const collection = kind === 'caption' ? e.captions : kind === 'audio' ? e.audio : e.clips
+    const source = collection.find((c) => c.id === clip.id)
+    source.trackId = trackId
+    source.start = placement.start
+  })
+  if (changed) {
+    selected.value = [entry.key]
+    anchor.value = entry.key
+    targetTrack.value = ''
+    tab.value = 'properties'
+  }
 }
-/** 对同一画面和其绑定字幕只切一次，所有命中的片段共享一个撤销步骤。 */
+function trimClip({ item, placement }) {
+  stop()
+  editEpisode((e) => {
+    materializeTimeline(e)
+    const collection = item.kind === 'caption' ? e.captions : item.kind === 'audio' ? e.audio : e.clips
+    const clip = collection.find((c) => c.id === item.clip.id)
+    if (!clip) return
+    clip.start = placement.start
+    clip.duration = placement.duration
+    if (item.kind !== 'caption') clip.trim = placement.trim
+  })
+}
+/** 只切命中的独立片段，所有选中项共用一个撤销步骤。 */
 function split(scope = 'selected') {
   const targets = scope === 'all' ? rows.value : selection.value
-  const cuts = { audio: new Map(), clips: new Map() }
-  const cutsFor = (kind) => (kind === 'audio' ? cuts.audio : cuts.clips)
+  const cuts = { audio: new Map(), clips: new Map(), captions: new Map() }
+  const cutsFor = (kind) => (kind === 'caption' ? cuts.captions : kind === 'audio' ? cuts.audio : cuts.clips)
   for (const { kind, clip } of targets) {
     const offset = onFrame(pos.value - clip.start, doc.value.fps)
     const changes = cutsFor(kind)
     if (!changes.has(clip.id) && offset >= 0.04 && clip.duration - offset >= 0.04)
       changes.set(clip.id, { offset, right: uid() })
   }
-  if (!cuts.audio.size && !cuts.clips.size) return notify('请把播放头移到要分割的片段内部')
+  if (!cuts.audio.size && !cuts.clips.size && !cuts.captions.size)
+    return notify('请把播放头移到要分割的片段内部')
   stop()
   if (
     !editEpisode((e) => {
+      materializeTimeline(e)
       function divide(clip, changes) {
         const cut = changes.get(clip.id)
         if (!cut) return [clip]
         const right = { ...clip, id: cut.right, duration: clip.duration - cut.offset }
-        if (asset(clip.assetId).kind !== 'image') right.trim += cut.offset
+        if (clip.assetId && asset(clip.assetId).kind !== 'image') right.trim += cut.offset
         if ('start' in right) right.start += cut.offset
         return [{ ...clip, duration: cut.offset }, right]
       }
       e.clips = e.clips.flatMap((clip) => divide(clip, cuts.clips))
       e.audio = e.audio.flatMap((clip) => divide(clip, cuts.audio))
+      e.captions = e.captions.flatMap((clip) => divide(clip, cuts.captions))
     })
   )
     return
@@ -312,13 +387,10 @@ function remove() {
   stop()
   if (
     editEpisode((e) => {
+      materializeTimeline(e)
       e.clips = e.clips.filter((c) => !keys.has('visual:' + c.id))
       e.audio = e.audio.filter((c) => !keys.has('audio:' + c.id))
-      for (const clip of e.clips) {
-        if (!keys.has('caption:' + clip.id)) continue
-        clip.caption = ''
-        delete clip.captionTrackId
-      }
+      e.captions = e.captions.filter((c) => !keys.has('caption:' + c.id))
     })
   )
     selected.value = []
@@ -411,7 +483,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', key))
           <Glyph name="shots" />
           按分镜粗剪
         </button>
-        <button class="primary" :disabled="!rail.length" @click="render">
+        <button class="outline" @click="addCaption">添加字幕</button>
+        <button class="primary" :disabled="!total" @click="render">
           <Glyph name="download" />
           导出 MP4
         </button>
@@ -443,9 +516,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', key))
                 @loadedmetadata="sync"
                 playsinline
               />
-              <img v-if="caption" class="caption" :src="caption" />
             </template>
-            <div v-else class="monitor-empty">
+            <div v-else-if="!total" class="monitor-empty">
               <Glyph name="film" :size="30" />
               <span>时间线暂无画面</span>
               <button @click="tab = 'media'">
@@ -453,6 +525,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', key))
                 <Glyph name="arrow" :size="12" />
               </button>
             </div>
+            <img v-if="caption" class="caption" :src="caption" />
             <div v-if="safeArea" class="safe-area" aria-hidden="true"><i /></div>
           </div>
           <audio
@@ -524,7 +597,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', key))
                     : '画面片段 ' + String(sequenceIndex + 1).padStart(2, '0')
               }}
             </span>
-            <strong>{{ picked?.name }}</strong>
+            <strong>{{ isCaption ? '字幕' : picked?.name }}</strong>
           </div>
           <div class="cut-range">
             <span>时间线范围</span>
@@ -532,8 +605,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', key))
               {{ timecode(position.start, doc.fps) }} — {{ timecode(position.start + row.duration, doc.fps) }}
             </b>
           </div>
-          <div v-if="!isCaption" class="fields">
-            <label>
+          <div class="fields">
+            <label v-if="!isCaption">
               源入点（秒）
               <input
                 type="number"
@@ -555,11 +628,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', key))
               />
             </label>
           </div>
-          <div v-if="!isCaption" class="trim-actions">
+          <div class="trim-actions">
             <button :disabled="!interior" @click="trimToHead(true)">裁去播放头前</button>
             <button :disabled="!interior" @click="trimToHead(false)">裁去播放头后</button>
           </div>
-          <label v-if="isAudio">
+          <label>
             轨道起点（秒）
             <input
               type="number"
@@ -580,37 +653,19 @@ onBeforeUnmount(() => window.removeEventListener('keydown', key))
               @change="patch('volume', $event.target.valueAsNumber)"
             />
           </label>
-          <label v-if="!isAudio">
+          <label v-if="isCaption">
             片段字幕
             <textarea :value="row.caption" maxlength="500" @change="patch('caption', $event.target.value)" />
           </label>
-          <label v-if="!isAudio && row.caption && captionTracks.length > 1">
+          <label v-if="isCaption && captionTracks.length > 1">
             字幕轨道
             <StudioSelect
               :options="captionTracks"
               :model-value="clipTrack(tracks, 'caption', row)"
-              @update:model-value="patch('captionTrackId', $event)"
+              @update:model-value="patch('trackId', $event)"
             />
           </label>
           <div class="inspect-actions">
-            <button
-              v-if="!isAudio && !isCaption"
-              class="icon"
-              :disabled="sequenceIndex <= 0"
-              title="片段左移"
-              @click="move(sequenceIndex, sequenceIndex - 1)"
-            >
-              <Glyph name="back" :size="15" />
-            </button>
-            <button
-              v-if="!isAudio && !isCaption"
-              :disabled="sequenceIndex >= rail.length - 1"
-              class="icon"
-              title="片段右移"
-              @click="move(sequenceIndex, sequenceIndex + 1)"
-            >
-              <Glyph name="chevron" :size="15" />
-            </button>
             <button class="icon" title="删除选中片段" @click="remove">
               <Glyph name="trash" :size="15" />
             </button>
@@ -672,7 +727,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', key))
         @seek="locateFrame"
         @select="select"
         @select-all="selectAll"
-        @move="move"
+        @drag-start="stop"
+        @drop-clip="dropClip"
+        @trim-clip="trimClip"
         @split="split"
         @remove="remove"
         @add-track="addTrack"

@@ -157,3 +157,40 @@ test('压缩状态穿插在助手说明与操作之间，分组中断后仍能�
     ['portrait']
   )
 })
+
+test('清空会话同时移除模型上下文及新旧轨迹，重开和重试仍为空', async (t) => {
+  const { loadHistory, saveHistory } = await import('../desktop/services/conversation-store.mjs')
+  const parent = await fs.mkdtemp(path.join(os.tmpdir(), 'frame-clear-chat-'))
+  t.after(() => fs.rm(parent, { recursive: true, force: true }))
+  const project = Project.create(parent, '清空会话', '16:9')
+  const other = Project.create(parent, '其他工程', '16:9')
+  const messages = [{ id: 'turn', role: 'user', text: '旧提问' }]
+  project.save({ ...project.data, messages })
+  other.save({ ...other.data, messages })
+  project.runs.save({ id: 'turn', status: 'completed', events })
+  await fs.writeFile(path.join(project.root, 'last-run.json'), JSON.stringify(events))
+  saveHistory(project, [{ role: 'user', content: '旧压缩上下文' }])
+  await fs.writeFile(path.join(project.root, 'work', 'keep.txt'), '工程文件')
+  const episodes = structuredClone(project.data.episodes)
+  const save = project.save
+  project.save = () => {
+    throw Error('模拟提交失败')
+  }
+  assert.throws(() => project.clearChat(), /模拟提交失败/)
+  assert.deepEqual(project.data.messages, messages)
+  assert.equal(loadHistory(project)[0].content, '旧压缩上下文')
+  assert.ok(project.agentHistory().length)
+  project.save = save
+  project.clearChat()
+  const reopened = Project.open(project.root)
+  assert.deepEqual(reopened.data.messages, [])
+  assert.deepEqual(loadHistory(reopened), [])
+  assert.deepEqual(reopened.agentHistory(), [])
+  assert.deepEqual(reopened.agentTrace('turn'), [])
+  assert.deepEqual(reopened.data.episodes, episodes)
+  assert.equal(await fs.readFile(path.join(project.root, 'work', 'keep.txt'), 'utf8'), '工程文件')
+  assert.deepEqual(Project.open(other.root).data.messages, messages)
+  assert.ok(!(await fs.readdir(project.root)).some((name) => name.startsWith('.clear-chat-')))
+  reopened.clearChat()
+  assert.deepEqual(reopened.data.messages, [])
+})

@@ -7,14 +7,10 @@ import Glyph from '../Glyph.vue'
 defineEmits(['addEpisode'])
 const editor = ref(null)
 const cursor = ref(0)
-const outlinePage = ref(0)
+const outlineList = ref(null)
 const outline = computed(() => screenplayOutline(episode.value.script))
 const count = computed(() => episode.value.script.replace(/\s/g, '').length)
 const currentEpisode = computed(() => doc.value.episodes.findIndex((e) => e.id === episode.value.id))
-const pageSize = 40
-const pageCount = computed(() => Math.max(1, Math.ceil(outline.value.rows.length / pageSize)))
-const page = computed(() => Math.min(pageCount.value - 1, outlinePage.value))
-const items = computed(() => outline.value.rows.slice(page.value * pageSize, (page.value + 1) * pageSize))
 const active = computed(() => outline.value.rows.findLast((entry) => entry.offset <= cursor.value))
 
 /** 同步人工撰写的正文与工程，智能体和撤销操作也更新同一份文本。 */
@@ -79,7 +75,7 @@ async function insertScene() {
   await nextTick()
   goTo(prefix.length, prefix.length + placeholder.length)
   const index = outline.value.rows.findIndex((entry) => entry.offset === prefix.length - title.length)
-  if (index >= 0) outlinePage.value = Math.floor(index / pageSize)
+  outlineList.value?.children[index]?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
 }
 /** 分集排序直接写入工程清单，切换剧本时按 ID 保留正确分集。 */
 function reorder(offset) {
@@ -97,7 +93,7 @@ watch(
   () => episode.value.id,
   () => {
     cursor.value = 0
-    outlinePage.value = 0
+    if (outlineList.value) outlineList.value.scrollTop = 0
     if (editor.value) editor.value.scrollTop = 0
   }
 )
@@ -135,9 +131,9 @@ watch(
           <small>{{ outline.rows.length }}</small>
         </h2>
       </header>
-      <div v-if="items.length" class="writing-outline">
+      <div v-if="outline.rows.length" ref="outlineList" class="writing-outline">
         <button
-          v-for="item in items"
+          v-for="item in outline.rows"
           :key="item.offset"
           :aria-current="active?.offset === item.offset ? 'location' : undefined"
           :title="item.title"
@@ -148,20 +144,6 @@ watch(
         </button>
       </div>
       <p v-else class="writing-hint">写下正文后，这里会列出场景或段落。</p>
-      <div v-if="pageCount > 1" class="outline-pages">
-        <button class="icon" title="上一页大纲" :disabled="!page" @click="outlinePage = page - 1">
-          <Glyph name="back" :size="14" />
-        </button>
-        <span>{{ page + 1 }} / {{ pageCount }}</span>
-        <button
-          class="icon"
-          title="下一页大纲"
-          :disabled="page + 1 >= pageCount"
-          @click="outlinePage = page + 1"
-        >
-          <Glyph name="chevron" :size="14" />
-        </button>
-      </div>
     </nav>
     <section class="production-panel script-paper">
       <header>

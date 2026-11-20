@@ -1,9 +1,71 @@
 <script setup vapor>
-import { computed, ref } from 'vue'
+import { computed, ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import Glyph from '../components/Glyph.vue'
-import { ui, openProject, openSettings } from '../store.js'
+import { ui, openProject, openSettings, manageProject } from '../store.js'
 import '../studio.css'
 const query = ref('')
+const menu = ref(null)
+const target = ref(null)
+let trigger
+function closeMenu(event) {
+  if (event?.type === 'pointerdown' && menu.value?.contains(event.target)) return
+  if (menu.value?.matches(':popover-open')) menu.value.hidePopover()
+}
+onMounted(() => {
+  window.addEventListener('pointerdown', closeMenu)
+  window.addEventListener('blur', closeMenu)
+  window.addEventListener('resize', closeMenu)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('pointerdown', closeMenu)
+  window.removeEventListener('blur', closeMenu)
+  window.removeEventListener('resize', closeMenu)
+})
+/** 鼠标右键与键盘菜单键共用项目操作入口。 */
+function projectMenu(event, project) {
+  if (ui.busy) return
+  event.preventDefault()
+  target.value = project
+  trigger = event.currentTarget
+  const bounds = trigger.getBoundingClientRect()
+  const x = event.type === 'keydown' ? bounds.left + 20 : event.clientX
+  const y = event.type === 'keydown' ? bounds.bottom : event.clientY
+  nextTick(() => {
+    if (!menu.value?.isConnected) return
+    menu.value.showPopover()
+    menu.value.style.left = Math.max(4, Math.min(x, innerWidth - menu.value.offsetWidth - 4)) + 'px'
+    menu.value.style.top = Math.max(4, Math.min(y, innerHeight - menu.value.offsetHeight - 4)) + 'px'
+    menu.value.querySelector('button').focus()
+  })
+}
+function menuKey(event) {
+  if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+    event.preventDefault()
+    const items = [...menu.value.querySelectorAll('button')]
+    const index = items.indexOf(document.activeElement)
+    const next =
+      event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? items.length - 1
+          : (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length
+    items[next].focus()
+  } else if (event.key === 'Escape') {
+    event.preventDefault()
+    event.stopPropagation()
+    menu.value.hidePopover()
+    trigger?.focus()
+  }
+}
+function projectKey(event, project) {
+  if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) projectMenu(event, project)
+}
+function runAction(action) {
+  const root = target.value?.root
+  menu.value.hidePopover()
+  trigger?.focus()
+  if (root) manageProject(root, action)
+}
 const projects = computed(() =>
   ui.recent.filter((p) => (p.title + ' ' + p.root).toLowerCase().includes(query.value.trim().toLowerCase()))
 )
@@ -46,7 +108,14 @@ const projects = computed(() =>
         <h2>未找到匹配的项目</h2>
       </div>
       <div v-else class="home-projects">
-        <button v-for="p in projects" :key="p.root" @click="openProject('recent', { root: p.root })">
+        <button
+          v-for="p in projects"
+          :key="p.root"
+          aria-haspopup="menu"
+          @click="openProject('recent', { root: p.root })"
+          @contextmenu="projectMenu($event, p)"
+          @keydown="projectKey($event, p)"
+        >
           <span class="project-tile"><Glyph name="film" :size="17" /></span>
           <span class="project-name">
             <b>{{ p.title }}</b>
@@ -57,5 +126,22 @@ const projects = computed(() =>
         </button>
       </div>
     </section>
+    <div
+      ref="menu"
+      popover="manual"
+      class="timeline-menu project-menu"
+      role="menu"
+      aria-label="项目操作"
+      @keydown="menuKey"
+    >
+      <button role="menuitem" @click="runAction('remove')">
+        <Glyph name="x" :size="15" />
+        移除项目
+      </button>
+      <button role="menuitem" class="menu-danger" @click="runAction('delete')">
+        <Glyph name="trash" :size="15" />
+        彻底删除项目和文件
+      </button>
+    </div>
   </div>
 </template>

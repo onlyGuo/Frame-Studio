@@ -90,10 +90,11 @@ const looseClip = fields(clipFields)
 const shotClip = fields({ ...clipFields, sourceShotId: id })
 const clip = (value) => {
   if (!value) return false
-  const { trackId, captionTrackId, ...item } = value
+  const { trackId, captionTrackId, start, ...item } = value
   return (
     (trackId === undefined || id(trackId)) &&
     (captionTrackId === undefined || id(captionTrackId)) &&
+    (start === undefined || time(start)) &&
     (looseClip(item) || shotClip(item))
   )
 }
@@ -128,10 +129,15 @@ const episodeFields = fields({
   clips: list(clip),
   audio: list(audio)
 })
+const captions = list(fields({ id, caption: str(500), start: time, duration: length, trackId: id }))
 const episode = (value) => {
   if (!value) return false
-  const { tracks: rows, ...base } = value
-  return episodeFields(base) && (rows === undefined || tracks(rows))
+  const { tracks: rows, captions: subtitles, ...base } = value
+  return (
+    episodeFields(base) &&
+    (rows === undefined || tracks(rows)) &&
+    (subtitles === undefined || captions(subtitles))
+  )
 }
 const cardFields = {
   id,
@@ -213,6 +219,8 @@ export function validateProject(value) {
       )
         throw Error('画面或字幕所属轨道无效')
     }
+    for (const caption of e.captions || [])
+      if (trackKinds.get(caption.trackId) !== 'caption') throw Error('字幕所属轨道无效')
     for (const clip of e.audio)
       if (clip.trackId && trackKinds.get(clip.trackId) !== 'audio') throw Error('音频所属轨道无效')
     for (const s of e.shots) {
@@ -220,7 +228,7 @@ export function validateProject(value) {
       check(s.referenceId, ['image'])
     }
     for (const c of [...e.clips, ...e.audio]) {
-      check(c.assetId, Object.hasOwn(c, 'start') ? ['audio', 'video'] : ['image', 'video'])
+      check(c.assetId, e.audio.includes(c) ? ['audio', 'video'] : ['image', 'video'])
       const asset = assets.get(c.assetId)
       if (asset.duration && c.trim + c.duration > asset.duration + 0.05) throw Error('裁切范围超出素材时长')
     }
@@ -234,12 +242,13 @@ export function validateVoiceSample(asset) {
     throw Error('角色样音须为 2–15 秒的 WAV 或 MP3。')
 }
 
-/** 以起点和时长构建连续主画面轨道。 */
+/** 使用显式起点构建时间范围，旧工程和新追加的片段沿已有末尾排列。 */
 export function sequence(clips) {
   let start = 0
   return clips.map((clip) => {
-    const item = { ...clip, start, end: start + clip.duration }
-    start = item.end
+    const at = clip.start ?? start
+    const item = { ...clip, start: at, end: at + clip.duration }
+    start = Math.max(start, item.end)
     return item
   })
 }

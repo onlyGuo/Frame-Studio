@@ -17,7 +17,7 @@ function addEpisode() {
 <template>
   <div
     class="page studio-work"
-    :class="{ 'directory-work': ['cards', 'shots'].includes(ui.page) }"
+    :class="{ 'directory-work': ['cards', 'shots'].includes(ui.page), 'writing-work': ui.page === 'story' }"
     v-if="doc"
   >
     <ProductionOverview v-if="ui.page === 'overview'" @add-episode="addEpisode" />

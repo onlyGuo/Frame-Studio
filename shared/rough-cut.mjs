@@ -1,15 +1,36 @@
-import { makeClip } from './model.mjs'
+import { makeClip, sequence } from './model.mjs'
 import { mentionToken, parseMentions } from './mentions.mjs'
 
-/** 字幕显示角色名，保留无法解析的旧引用供创作者修订。 */
+/** 从对白提取已标明说话人的台词；正文中的人名和普通冒号保持原文。 */
 function captionText(dialogue, cards) {
-  return parseMentions(dialogue)
+  const speakers = new Set([
+    ...cards.filter((card) => card.type === '角色').map((card) => card.name),
+    '旁白',
+    '画外音',
+    '画外对白',
+    '独白',
+    'VO',
+    'V.O.'
+  ])
+  const text = dialogue.replace(
+    /(^|[。？！!?；;\n])([ \t]*)(@\{card:[\w-]+(?::[\w-]+)?\}|[^：:。？！!?；;\n]{1,80}?)\s*[：:][ \t]*/gu,
+    (whole, boundary, space, label) => {
+      const speaker = label
+        .trim()
+        .replace(/\s*(?:（[^（）]*）|\([^()]*\))$/, '')
+        .trim()
+      if (!speakers.has(speaker) && !/^@\{card:[\w-]+(?::[\w-]+)?\}$/.test(speaker)) return whole
+      return boundary
+    }
+  )
+  return parseMentions(text)
     .map((part) =>
       part.type === 'text'
         ? part.text
         : (cards.find((card) => card.id === part.id)?.name ?? mentionToken(part.id, part.outfitId))
     )
     .join('')
+    .trim()
 }
 
 /** 从镜头建立可独立调整的画面片段，实际取用时长受素材和镜头设计的共同约束。 */
@@ -85,6 +106,14 @@ export function roughCut(episode, assets, cards = []) {
   for (let i = 0; i <= clips.length; i++) {
     merged.push(...(insert.get(i) || []))
     if (i < clips.length) merged.push(clips[i])
+  }
+  if (episode.clips.some((clip) => clip.start !== undefined)) {
+    let end = Math.max(0, ...sequence(episode.clips).map((clip) => clip.end))
+    for (const clip of merged) {
+      if (clip.start !== undefined) continue
+      clip.start = end
+      end += clip.duration
+    }
   }
   return {
     clips: merged,

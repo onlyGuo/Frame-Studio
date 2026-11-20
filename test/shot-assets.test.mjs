@@ -40,7 +40,7 @@ test('角色样音随实际说话人跨服饰复用，换样音后在途视频�
   )
   assert.equal(
     clipFromShot(shot, { id: 'video', duration: 5 }, doc.cards).caption,
-    '阿岚：老李说过别开门。林舟：我知道。'
+    '老李说过别开门。我知道。'
   )
   const videoTarget = prepareMediaTarget(doc, 'video', { shotId: shot.id })
   const audioTarget = prepareMediaTarget(doc, 'audio', { cardId: 'lin' })

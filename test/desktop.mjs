@@ -5,6 +5,7 @@ import http from 'node:http'
 import { modelFixture, slowParts, slowQuestion, streamSlowReply } from './model-fixture.mjs'
 import { verifyShotMentions } from './mentions-window.mjs'
 import { verifyVideoAssetReview } from './shot-assets-window.mjs'
+import { verifyTimelineDrag } from './timeline-window.mjs'
 import path from 'node:path'
 import os from 'node:os'
 import fs from 'node:fs/promises'
@@ -354,12 +355,23 @@ try {
   assert.ok(inspectorContrast.length > 0 && inspectorContrast.every((ratio) => ratio >= 4.5))
   await page.locator('.lane button').first().click()
   await page.getByLabel('时长（秒）', { exact: true }).fill('0.8')
+  await page.getByRole('heading', { name: '剪辑台' }).click()
+  await page.getByRole('button', { name: '添加字幕', exact: true }).click()
   await page.getByLabel('片段字幕').fill('雨后')
   await page.getByRole('heading', { name: '剪辑台' }).click()
   await page.getByRole('button', { name: '导出 MP4' }).click()
   await page.getByRole('heading', { name: '成片已导出' }).waitFor()
   await page.getByRole('button', { name: '关闭', exact: true }).click()
   await page.locator('.overlay').waitFor({ state: 'detached' })
+  await app.evaluate(({ dialog }, file) => {
+    const previous = dialog.showOpenDialog
+    dialog.showOpenDialog = async (window, options) => {
+      if (options.title !== '导入媒体') return previous(window, options)
+      dialog.showOpenDialog = previous
+      return { canceled: false, filePaths: [file] }
+    }
+  }, voiceFile)
+  await verifyTimelineDrag(page)
   await page.getByRole('button', { name: '命令工作台' }).click()
   await page.getByLabel('可执行文件').fill('python')
   await page.getByRole('button', { name: '运行命令' }).click()
@@ -598,6 +610,31 @@ try {
   assert.deepEqual(errors, [])
   await page.getByRole('button', { name: '剧本写作', exact: true }).click()
   await page.getByLabel('剧本正文').fill('关闭工程前保存的正文。')
+  const clearChat = page.getByRole('button', { name: '清空聊天记录', exact: true })
+  const turnCount = await page.locator('.ac-turn').count()
+  assert.ok(turnCount > 0)
+  await clearChat.click()
+  await page.locator('.job').waitFor({ state: 'hidden' })
+  assert.equal(await page.locator('.ac-turn').count(), turnCount)
+  await app.evaluate(({ dialog }) => {
+    dialog.showMessageBox = async () => ({ response: 1 })
+  })
+  await clearChat.click()
+  await page.getByRole('heading', { name: '从哪里开始创作？' }).waitFor()
+  assert.equal(await page.locator('.ac-turn').count(), 0)
+  const cleared = await page.evaluate(async () => {
+    const { current, agentTask } = await window.studio.initial()
+    return {
+      messages: current.data.messages,
+      task: agentTask,
+      history: await window.studio.agentHistory({ session: current.session })
+    }
+  })
+  assert.deepEqual(cleared, { messages: [], task: null, history: [] })
+  await page.getByRole('button', { name: '撤销', exact: true }).click()
+  assert.equal(await page.locator('.ac-turn').count(), 0)
+  await page.getByRole('button', { name: '重做', exact: true }).click()
+  assert.equal(await page.getByLabel('剧本正文').inputValue(), '关闭工程前保存的正文。')
   const closed = page.waitForEvent('close')
   await page.getByRole('button', { name: '关闭工程', exact: true }).click()
   await closed
@@ -607,7 +644,39 @@ try {
   page = await reopened
   await page.getByRole('button', { name: '剧本写作', exact: true }).click()
   assert.equal(await page.getByLabel('剧本正文').inputValue(), '关闭工程前保存的正文。')
-  console.log('Electron 窗口验收通过，覆盖首次响应重试、SSE 停顿、跨项目生图、重载、命令授权和产物归属。')
+  assert.deepEqual(await page.evaluate(async () => (await window.studio.initial()).current.data.messages), [])
+  const removalTarget = await page.evaluate(async () => (await window.studio.initial()).current)
+  await page.getByRole('button', { name: '项目工作台', exact: true }).click()
+  const targetRow = () => homePage.locator('.home-projects > button').filter({ hasText: removalTarget.root })
+  await targetRow().click({ button: 'right' })
+  await homePage.getByRole('menuitem', { name: '移除项目', exact: true }).click()
+  await targetRow().waitFor({ state: 'detached' })
+  await fs.access(path.join(removalTarget.root, 'studio.json'))
+  await app.evaluate(({ dialog }, root) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [root] })
+    dialog.showMessageBox = async () => ({ response: 0 })
+  }, removalTarget.root)
+  await homePage.getByRole('button', { name: '打开目录', exact: true }).click()
+  await page.getByRole('heading', { name: '创作工作区' }).waitFor()
+  await page.getByRole('button', { name: '项目工作台', exact: true }).click()
+  await targetRow().focus()
+  await targetRow().press('Shift+F10')
+  await homePage.getByRole('menuitem', { name: '彻底删除项目和文件', exact: true }).click()
+  await homePage.locator('.job').waitFor({ state: 'hidden' })
+  await fs.access(path.join(removalTarget.root, 'studio.json'))
+  assert.equal(await targetRow().count(), 1)
+  await app.evaluate(({ dialog }) => {
+    dialog.showMessageBox = async () => ({ response: 1 })
+  })
+  const deletedWindow = page.waitForEvent('close')
+  await targetRow().click({ button: 'right' })
+  await homePage.getByRole('menuitem', { name: '彻底删除项目和文件', exact: true }).click()
+  await deletedWindow
+  await targetRow().waitFor({ state: 'detached' })
+  await assert.rejects(fs.access(removalTarget.root), { code: 'ENOENT' })
+  await homePage.reload()
+  assert.equal(await targetRow().count(), 0)
+  console.log('Electron 窗口验收通过，覆盖剪辑、聊天清空、项目移除与彻底删除及助手工作流。')
 } catch (err) {
   const p = app.windows().at(-1)
   console.error(
