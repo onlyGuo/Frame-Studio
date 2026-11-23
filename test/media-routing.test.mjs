@@ -207,7 +207,7 @@ test('通用命令按 mediaKind 解析已配置服务，审批参数显示 provi
     ]
   ]) {
     const result = await executeTool('run_command', { mediaKind: 'image', executable, args }, ctx)
-    assert.deepEqual(result, {
+    assert.deepEqual({ ...result, stdout: result.stdout.replaceAll('\r\n', '\n') }, {
       executed: true,
       exitCode: 0,
       stdout: '[已隐藏]\n',
