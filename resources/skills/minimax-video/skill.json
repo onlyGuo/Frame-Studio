@@ -10,8 +10,8 @@
     "args": [
       "-I",
       "-B",
-      "{skill}/main.py"
+      "{skill}/script/h3.py"
     ]
   },
-  "videoPrompt": "video-prompt.json"
+  "videoPrompt": "legacy-hailuo/video-prompt.json"
 }

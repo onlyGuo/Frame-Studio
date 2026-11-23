@@ -96,6 +96,7 @@ async function providerError(res, url, redact, signal) {
   return Object.assign(
     Error('语言模型返回 HTTP ' + res.status + ' · ' + new URL(url).pathname + ' · ' + hint),
     {
+      status: res.status,
       contextLimit: contextLimit(res.status, error),
       unsupportedStreamUsage:
         [400, 422].includes(res.status) &&
@@ -123,7 +124,7 @@ export async function requestModel(session, options) {
     method: 'POST',
     dispatcher,
     redirect: 'error',
-    headers: { 'Content-Type': 'application/json', ...session.headers(cfg.key) },
+    headers: { 'Content-Type': 'application/json', ...session.headers(cfg.key, cfg.url) },
     body: serialize()
   }
   let retries = 0

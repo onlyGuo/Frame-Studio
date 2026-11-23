@@ -13,13 +13,13 @@ import { withMediaTarget } from './media-targets.mjs'
 import { resolveMentions } from '../../shared/mentions.mjs'
 import { prepareVideoInput, verifyVideoFiles } from './shot-assets.mjs'
 import { defaultOutfit, roleOutfit } from '../../shared/outfits.mjs'
-import { formatVideoPrompt } from './video-prompt.mjs'
+import { formatVideoPrompt, validateFinalVideoPrompt } from './video-prompt.mjs'
 import { isMiniMaxH3, videoDurations, videoPromptInput } from '../core/video-inputs.mjs'
 
 const roleReferencePrompt = fs
   .readFileSync(new URL('../../resources/prompts/role-reference.md', import.meta.url), 'utf8')
   .trim()
-const h3PromptFile = 'video-prompt.json'
+const h3PromptFile = 'legacy-hailuo/video-prompt.json'
 
 /** 校验声明与入口。自定义 Skill 是由用户安装的受信任本地程序。 */
 function describe(dir) {
@@ -146,6 +146,9 @@ export class Skills {
     const base = localDir(settings.root, 'skills')
     this.builtin = localDir(base, 'builtin')
     this.custom = localDir(base, 'custom')
+    // 内置 Skill 随应用版本管理，先清理旧版本残留再完整同步，避免已删除的指南继续进入 read_skill。
+    fs.rmSync(this.builtin, { recursive: true, force: true })
+    fs.mkdirSync(this.builtin, { recursive: true })
     fs.cpSync(source, this.builtin, { recursive: true, force: true })
   }
   /** 从本地目录读取最新能力声明和启用状态。 */
@@ -260,14 +263,39 @@ export class Skills {
     const skillDir = path.join(s.builtin ? this.builtin : this.custom, id)
     if (s.kind === 'video')
       await verifyVideoFiles([...spec.references, ...(spec.audioReferences || [])], signal)
-    if (s.kind === 'video' && s.videoPrompt) {
+    const directH3 =
+      (s.provider === 'minimax-video' && isMiniMaxH3(env.STUDIO_MODEL)) || s.provider === 'vllm-h3'
+    if (directH3 && input.requireFinalPrompt && !String(input.finalPrompt || '').trim()) {
+      const error = Error('视频 Skill 命令必须先读取对应 Skill，并在 finalPrompt 中传入官方最终提示词。')
+      error.recovery = {
+        action: 'read_skill_then_retry',
+        skill: s.id,
+        required: ['SKILL.md', 'finalPrompt'],
+        message: '先读取 Skill 及其 references，按官方格式生成最终提示词，再重新调用 run_command。'
+      }
+      throw error
+    }
+    if (directH3 && input.finalPrompt) {
+      spec.prompt = input.finalPrompt
+    } else if (s.kind === 'video' && s.videoPrompt && input.finalPrompt) {
+      try {
+        const promptDir =
+          s.provider === 'vllm-h3' && s.builtin ? path.join(this.builtin, 'minimax-video') : skillDir
+        spec.prompt = validateFinalVideoPrompt(s, promptDir, spec, input.finalPrompt, env.STUDIO_MODEL)
+      } catch (error) {
+        signal?.throwIfAborted()
+        throw Error('官方视频提示词校验失败：' + this.settings.redactor()(error.message))
+      }
+    } else if (s.kind === 'video' && s.videoPrompt) {
       try {
         const promptDir =
           s.provider === 'vllm-h3' && s.builtin ? path.join(this.builtin, 'minimax-video') : skillDir
         spec.prompt = await this.formatVideo(this.settings, s, promptDir, spec, signal, env.STUDIO_MODEL)
       } catch (error) {
         signal?.throwIfAborted()
-        throw Error('整理视频提示词失败：' + this.settings.redactor()(error.message))
+        const wrapped = Error('整理视频提示词失败：' + this.settings.redactor()(error.message))
+        if (error.diagnostic) wrapped.diagnostic = error.diagnostic
+        throw wrapped
       }
     }
     signal?.throwIfAborted()
@@ -275,7 +303,11 @@ export class Skills {
     try {
       const output = path.join(dir, 'result' + s.extension)
       const expand = (value) => value.replaceAll('{skill}', skillDir).replaceAll('{output}', output)
-      const command = { executable: expand(s.command.executable), args: s.command.args.map(expand) }
+      const definition =
+        s.provider === 'minimax-video' && !isMiniMaxH3(env.STUDIO_MODEL)
+          ? { executable: 'python', args: ['-I', '-B', '{skill}/script/hailuo.py'] }
+          : s.command
+      const command = { executable: expand(definition.executable), args: definition.args.map(expand) }
       const { visual, dialogue, ...payload } = spec
       if (s.provider === 'vllm-h3' || (s.provider === 'minimax-video' && isMiniMaxH3(env.STUDIO_MODEL)))
         payload.inputMode = videoPromptInput(
@@ -292,11 +324,18 @@ export class Skills {
         env: { ...env, STUDIO_OUTPUT: output },
         input: JSON.stringify(payload),
         signal,
-        capture: false
+        capture: true
       })
       if (result.code) {
         const label = s.name + (env.STUDIO_MODEL ? '（' + env.STUDIO_MODEL + '）' : '')
-        throw Error(label + '：' + failureReason(dir, output, s.builtin, result.code))
+        const error = Error(label + '：' + failureReason(dir, output, s.builtin, result.code))
+        error.commandResult = {
+          exitCode: result.code,
+          ...(result.reason ? { signal: result.reason } : {}),
+          stdout: result.stdout || '',
+          stderr: result.stderr || ''
+        }
+        throw error
       }
       let binding
       const assets = await project.addMedia(
@@ -315,7 +354,14 @@ export class Skills {
           binding = commitMediaTarget(draft, asset, target)
         }
       )
-      return { assets, ...binding }
+      return {
+        assets,
+        ...binding,
+        exitCode: result.code,
+        ...(result.reason ? { signal: result.reason } : {}),
+        stdout: result.stdout || '',
+        stderr: result.stderr || ''
+      }
     } finally {
       await fsp.rm(dir, { recursive: true, force: true })
     }
@@ -340,7 +386,9 @@ function failureReason(dir, output, builtin, code) {
       if (info.reason === 'voice_upload') return '无法上传角色样音到百炼临时存储，请核对模型和地域配置'
       if (info.reason === 'duration') return '请输入所选视频模型支持的整数秒数'
       if (info.reason === 'http' && Number.isInteger(info.status) && info.status >= 300 && info.status <= 599)
-        return stage + '返回 HTTP ' + info.status
+        return (
+          stage + '返回 HTTP ' + info.status + (info.detail ? '：' + String(info.detail).slice(0, 400) : '')
+        )
       if (info.reason === 'format') return stage + '成功，但响应中缺少生成的媒体'
       if (info.reason === 'task') return '供应商未完成生成任务'
       if (info.reason === 'timeout') return stage + '超时'

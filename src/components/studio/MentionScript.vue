@@ -18,7 +18,9 @@ const props = defineProps({
   imageUrl: Function,
   label: { type: String, default: '分镜脚本' },
   detail: { type: String, default: '画面与运镜' },
-  manageLabel: { type: String, default: '管理设定卡' }
+  manageLabel: { type: String, default: '管理设定卡' },
+  kinds: { type: Array, default: () => ['角色', '场景', '道具'] },
+  toolbar: { type: Boolean, default: true }
 })
 const emit = defineEmits(['update:modelValue', 'manage', 'history'])
 const editor = ref(null),
@@ -29,7 +31,7 @@ const menuStyle = ref({})
 const fieldId = useId()
 const validation = ref('')
 const maxScriptLength = 80000
-const kinds = ['角色', '场景', '道具']
+const kinds = computed(() => props.kinds)
 const index = computed(() => new Map(props.cards.map((card) => [card.id, card])))
 const matches = computed(() => {
   const query = trigger.value?.query?.trim().toLowerCase() || ''
@@ -172,7 +174,7 @@ function input() {
   update(text)
   detectQuery()
 }
-function toolbar(kind) {
+function openToolbar(kind) {
   const sel = remember() || savedSelection || { start: props.modelValue.length, end: props.modelValue.length }
   editor.value.focus({ preventScroll: true })
   setScriptSelection(editor.value, sel.start, sel.end)
@@ -331,7 +333,7 @@ onBeforeUnmount(() => {
         {{ label }}
         <small v-if="detail">{{ detail }}</small>
       </strong>
-      <div class="mention-tools" aria-label="插入设定资产">
+      <div v-if="toolbar" class="mention-tools" aria-label="插入设定资产">
         <button
           v-for="kind in kinds"
           :key="kind"
@@ -339,7 +341,7 @@ onBeforeUnmount(() => {
           :aria-label="'插入' + kind"
           :title="'插入' + kind"
           @mousedown.prevent
-          @click="toolbar(kind)"
+          @click="openToolbar(kind)"
         >
           <span>@</span>
           {{ kind }}

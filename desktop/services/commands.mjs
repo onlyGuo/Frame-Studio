@@ -22,7 +22,7 @@ export class Commands {
   constructor({ node, python, ffmpeg }) {
     this.bins = { node, python, python3: python, ffmpeg }
   }
-  /** 按参数数组启动进程，收集受限输出，取消时终止进程树。 */
+  /** 按参数数组启动进程，收集完整标准输出，取消时终止进程树。 */
   async run(command, { cwd, env = {}, input = '', signal, timeout = 1200000, capture = true }) {
     validateCommand(command)
     const paths = [...new Set(Object.values(this.bins).map((p) => path.dirname(p)))]
@@ -56,8 +56,8 @@ export class Commands {
       })
       let stdout = '',
         stderr = ''
-      proc.stdout?.setEncoding('utf8').on('data', (b) => (stdout = (stdout + b).slice(-24000)))
-      proc.stderr?.setEncoding('utf8').on('data', (b) => (stderr = (stderr + b).slice(-24000)))
+      proc.stdout?.setEncoding('utf8').on('data', (b) => (stdout += b))
+      proc.stderr?.setEncoding('utf8').on('data', (b) => (stderr += b))
       const kill = () => {
         if (!proc.pid) return
         if (process.platform === 'win32')

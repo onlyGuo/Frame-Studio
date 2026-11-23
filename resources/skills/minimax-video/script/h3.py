@@ -5,6 +5,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import time
 from pathlib import Path
 from urllib.parse import quote, urlsplit
@@ -12,6 +13,19 @@ from urllib.parse import quote, urlsplit
 import requests
 
 MIME_TYPES = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
+
+
+def fail(job, reason, status=None, stage="submit", detail=""):
+    """只写回可展示的错误类别，不把密钥、路径和供应商原始响应带入对话。"""
+    safe_detail = detail if isinstance(detail, str) else ""
+    safe_detail = " ".join(safe_detail.split())[:400]
+    Path(job["output"] + ".diagnostic").write_text(
+        json.dumps(
+            {"stage": stage, "reason": reason, "status": status, "detail": safe_detail},
+            ensure_ascii=False,
+        )
+    )
+    raise SystemExit(1)
 
 
 def image_item(job, reference, role, fail):
@@ -49,7 +63,15 @@ def generate(job, model, fail):
         except requests.RequestException:
             fail(job, "network", stage=stage)
         if response.status_code != 200:
-            fail(job, "http", response.status_code, stage)
+            detail = ""
+            try:
+                payload = response.json()
+                base_resp = payload.get("base_resp", {}) if isinstance(payload, dict) else {}
+                error = payload.get("error", {}) if isinstance(payload, dict) else {}
+                detail = base_resp.get("status_msg") or error.get("message") or ""
+            except ValueError:
+                pass
+            fail(job, "http", response.status_code, stage, detail)
         try:
             return response.json()
         except ValueError:
@@ -119,3 +141,15 @@ def generate(job, model, fail):
             fail(job, "task", stage="poll")
         time.sleep(5)
     fail(job, "timeout", stage="poll")
+
+
+def main():
+    """从 stdin 读取一个制作任务，使用环境中的 H3 配置生成视频。"""
+    if sys.stdout is not None:
+        sys.stdout.reconfigure(encoding="utf-8")
+    job = json.load(sys.stdin.buffer)
+    generate(job, os.environ["STUDIO_MODEL"], fail)
+
+
+if __name__ == "__main__":
+    main()

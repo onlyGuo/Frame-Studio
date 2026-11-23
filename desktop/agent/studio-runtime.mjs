@@ -5,6 +5,16 @@ import { traceToolStart, traceToolResult } from '../../shared/agent-trace.mjs'
 
 const instructions = new URL('../../resources/prompts/agent.md', import.meta.url)
 
+/** 为工程重开保留安全的失败原因，完整工具回执仍只写入模型上下文。 */
+function recoveryResult(name, value, failed) {
+  if (!failed) return {}
+  const detail =
+    name === 'run_command'
+      ? value?.results?.find((row) => typeof row?.error === 'string')?.error
+      : value?.error
+  return typeof detail === 'string' && detail.trim() ? { recoveryError: detail.slice(0, 800) } : {}
+}
+
 /** 装配本应用的工具、环境和启用的创作指南，通用对话循环只依赖这个运行接口。 */
 export function studioRuntime(ctx) {
   const tools = toolsForSession(ctx.skills)
@@ -31,7 +41,10 @@ export function studioRuntime(ctx) {
       })
     },
     describeCall: traceToolStart,
-    describeResult: traceToolResult,
+    describeResult: (name, value, failed) => ({
+      ...traceToolResult(name, value, failed),
+      ...recoveryResult(name, value, failed)
+    }),
     describeError: (error) => (Array.isArray(error.issues) ? { issues: assetIssueActions(error.issues) } : {})
   }
 }

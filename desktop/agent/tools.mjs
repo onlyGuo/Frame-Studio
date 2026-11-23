@@ -60,6 +60,11 @@ const commandStep = object({
   provider: string,
   extension: string,
   prompt: string,
+  finalPrompt: {
+    type: 'string',
+    description:
+      '视频 Skill 按官方 Skill 直接组装的最终供应商提示词。对声明 videoPrompt 的视频 Skill 必填，且必须先读取对应 Skill。'
+  },
   sampleText: { type: 'string', description: '角色样音使用的短试听台词。' },
   voiceId: { type: 'string', description: '复用指定 MiniMax Speech 音色时提供的音色 ID。' },
   duration: num,
@@ -107,11 +112,12 @@ export const toolDefinitions = [
   {
     name: 'run_command',
     description:
-      '在工程 work/ 中顺序执行命令组，返回每一步的状态和输出。普通命令填写 executable 与 args；可附 script 写入相对路径的脚本，再由命令运行。STUDIO_PROJECT 是当前制作资料快照。applyEdits=true 时将 edit_project 的 actions 数组写入 STUDIO_EDITS，以事务提交。已配置的可执行 Skill 可用 skill 指定其 ID 或默认媒体类型，并同层填写输入与工程目标。自定义程序按需用 mediaKind 或 provider 取得临时服务环境；媒体产物写到 STUDIO_OUTPUT 并声明 extension。带凭据命令的标准输出保留在本机。默认首个失败后跳过后续步骤，独立任务可设置 continueOnError=true。',
+      '在工程 work/ 中执行命令组，返回每一步的状态和输出。默认串行执行，需要互不依赖时可传 executionMode="parallel"。普通命令填写 executable 与 args；可附 script 写入相对路径的脚本，再由命令运行。STUDIO_PROJECT 是当前制作资料快照。applyEdits=true 时将 edit_project 的 actions 数组写入 STUDIO_EDITS，以事务提交。已配置的可执行 Skill 可用 skill 指定其 ID 或默认媒体类型，并同层填写输入与工程目标。声明 videoPrompt 的视频 Skill 必须先 read_skill，再在同一步传入按官方 Skill 生成的 finalPrompt，不能只传 skill、shotId 或 duration。自定义程序按需用 mediaKind 或 provider 取得临时服务环境；媒体产物写到 STUDIO_OUTPUT 并声明 extension。命令结果会回传状态、退出码、信号、标准输出和标准错误。串行模式默认首个失败后跳过后续步骤，独立任务可设置 continueOnError=true。并行模式会启动所有步骤，continueOnError 不影响已启动步骤。',
     parameters: object(
       {
         commands: { type: 'array', items: commandStep, minItems: 1, maxItems: 32 },
-        continueOnError: { type: 'boolean' }
+        continueOnError: { type: 'boolean' },
+        executionMode: { type: 'string', enum: ['serial', 'parallel'] }
       },
       ['commands']
     )
@@ -182,10 +188,11 @@ export function assetIssueActions(issues) {
 /** 使用已安装 Skill 的真实命令与工程登记服务，和桌面生成操作共享资源绑定。 */
 async function invokeMediaSkill(args, ctx) {
   const { skills, project, signal } = ctx
+  const { includeCommandResult, ...mediaArgs } = args
   const d = project.data
-  const chosenById = args.id && skills.resolveMedia(args.kind, args.id)
-  if ((args.kind || chosenById?.kind) === 'image' && args.cardId && args.regenerate !== true) {
-    const target = prepareMediaTarget(d, 'image', args)
+  const chosenById = mediaArgs.id && skills.resolveMedia(mediaArgs.kind, mediaArgs.id)
+  if ((mediaArgs.kind || chosenById?.kind) === 'image' && mediaArgs.cardId && mediaArgs.regenerate !== true) {
+    const target = prepareMediaTarget(d, 'image', mediaArgs)
     const image = await reusableCardImage(project, target, signal)
     if (image)
       return {
@@ -197,14 +204,18 @@ async function invokeMediaSkill(args, ctx) {
         reused: true
       }
   }
-  const chosen = chosenById || skills.resolveMedia(args.kind)
+  const chosen = chosenById || skills.resolveMedia(mediaArgs.kind)
   const {
     assets: [a],
+    exitCode,
+    signal: commandSignal,
+    stdout,
+    stderr,
     ...binding
   } = await skills.generate(
     project,
     chosen.id,
-    { ...args, episodeId: args.episodeId || ctx.episodeId },
+    { ...mediaArgs, episodeId: mediaArgs.episodeId || ctx.episodeId },
     signal
   )
   return {
@@ -214,7 +225,8 @@ async function invokeMediaSkill(args, ctx) {
     duration: a.duration,
     skillId: chosen.id,
     model: chosen.model,
-    ...binding
+    ...binding,
+    ...(includeCommandResult ? { exitCode, signal: commandSignal, stdout, stderr } : {})
   }
 }
 
@@ -374,7 +386,9 @@ export async function executeTool(name, args, ctx) {
         .find((s) => s.id === args.id && s.enabled && (!s.provider || ctx.settings.ready(s.provider)))
       if (!s) throw Error('Skill 未启用或不存在')
       const directory = skills.enabledDirectory(s.id)
-      const files = skillFiles(directory)
+      const files = skillFiles(directory).filter(
+        (file) => !file.startsWith('legacy-hailuo/') && file !== 'script/hailuo.py'
+      )
       if (args.file) {
         if (!files.includes(args.file) || !/\.(?:md|txt)$/i.test(args.file))
           throw Error('请选择此 Skill 列出的文本参考')

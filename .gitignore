@@ -4,5 +4,3 @@ runtime/
 release/
 .DS_Store
 .idea/
-# Local copy of upstream docs subject to the MiniMax H3 Community License.
-/resources/skills/minimax-video/h3-prompt-writing/

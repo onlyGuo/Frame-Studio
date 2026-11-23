@@ -35,12 +35,12 @@
 
 打开「模型配置」，分别完成下面几项。**视频生成会先调用语言模型整理本镜提示词**，所以使用内置视频 Skill 时也需要配置语言模型。
 
-| 标签     | 填什么                                                                                                         | 做什么                                                                       |
-| -------- | -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| 语言模型 | 选择 OpenAI Chat、OpenAI Responses 或 Anthropic Messages，填基础地址、模型名和 API Key，再设为助手使用的协议。 | 驱动创作助手，也为视频生成整理提示词。                                       |
-| 图像生成 | 配置 OpenAI 兼容图像、阿里云千问/万相或腾讯混元。混元另填 SecretId 和地域。                                    | 生成角色五视图、场景图、道具图与分镜底图。                                   |
-| 视频生成 | 配置 MiniMax 或阿里云万相。按服务填写准确的模型名，并将所需服务设为默认。                                      | 按实际参考模式生成镜头片段。                                                 |
-| 助手运行 | 设置上下文压缩阈值和首次响应超时。                                                                             | 默认 270,000 tokens、300 秒。收到响应头后持续读取 SSE，无响应最多重试 5 次。 |
+| 标签     | 填什么                                                                                                         | 做什么                                                                                                                             |
+| -------- | -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| 语言模型 | 选择 OpenAI Chat、OpenAI Responses 或 Anthropic Messages，填基础地址、模型名和 API Key，再设为助手使用的协议。 | 驱动创作助手，也为视频生成整理提示词。                                                                                             |
+| 图像生成 | 配置 OpenAI 兼容图像、阿里云千问/万相或腾讯混元。混元另填 SecretId 和地域。                                    | 生成角色五视图、场景图、道具图与分镜底图。                                                                                         |
+| 视频生成 | 配置 MiniMax 或阿里云万相。按服务填写准确的模型名，并将所需服务设为默认。                                      | 按实际参考模式生成镜头片段。                                                                                                       |
+| 助手运行 | 设置上下文压缩阈值、首次响应超时和命令审批策略。                                                               | 默认 270,000 tokens、300 秒、独立审核后帮我批准命令。可切换请求批准或完全访问权限。收到响应头后持续读取 SSE，无响应最多重试 5 次。 |
 
 API 基础地址填写服务提供的前缀。模型名使用服务商控制台或接入网关给出的 ID。视频需要同时使用多张角色、场景和道具图时，先确认型号支持参考生视频。例如用于本地多图的选项有 `MiniMax-H3` 与 `wan3.0-video`。海螺单首帧模式适合用一张已构图的分镜底图启动动画。
 
@@ -78,7 +78,7 @@ API 基础地址填写服务提供的前缀。模型名使用服务商控制台�
 - 要补齐系列镜头时用「生成缺失视频」。批量任务按选中的镜头顺序处理，成品随完成逐个入库并绑定。
 - 可在「素材库」查看导入图片、分镜底图与视频。用「未绑定分镜的视频」找回待归属的旧素材，选择已有镜头绑定，或创建一个新镜头。
 
-手动、批量和 Agent 调用同一个视频生成入口。语言模型按 Skill 规则整理本镜画面，程序校验格式和参考编号，再填入原对白并提交。H3 提示词正文使用英文，台词和画面文字保留原语言。工作室保留原始分镜，整理失败的请求停在视频提交前。成片的口型、服饰和实际对白仍应在剪辑前看片核对。
+手动、批量和 Agent 调用同一个视频生成入口。语言模型按官方 Skill 直接整理本镜最终字段，程序校验格式、原对白和参考编号，再提交。H3 提示词正文使用英文，台词和画面文字保留原语言。工作室保留原始分镜，整理失败的请求停在视频提交前。成片的口型、服饰和实际对白仍应在剪辑前看片核对。
 
 ![素材库中的分镜视频、场景、道具和角色参考图](docs/screenshots/05-media.webp)
 
@@ -100,7 +100,7 @@ API 基础地址填写服务提供的前缀。模型名使用服务商控制台�
 
 理论上，所有的操作都可以用自然语言描述。助手会把请求拆成步骤，按顺序执行。每个步骤的结果会显示在对话中，点击可展开查看详细信息。
 
-助手会通过原生工具读取工程、登记修改或调用 Skill。运行任务绑定到发起时的工程和分集，切换页面或收起助手后仍可执行。要看详细进展，可展开操作组。包含本机程序的命令组需要在界面核对并授权。关闭应用窗口会停止当前任务。
+助手会通过原生工具读取工程、登记修改或调用 Skill。运行任务绑定到发起时的工程和分集，切换页面或收起助手后仍可执行。要看详细进展，可展开操作组。命令审批默认由助手自动处理，也可以在对话框底部切换为每次询问。关闭应用窗口会停止当前任务。
 
 ![创作助手展开后的对话，展示可折叠的步骤、操作回执和粗剪结果](docs/screenshots/07-agent.webp)
 
@@ -160,7 +160,9 @@ description: 核对本集分镜的场景、服饰与参考图。
 <details>
 <summary>MiniMax H3 · 本地使用原版参考</summary>
 
-公开构建自带[英文关键帧规则](resources/skills/minimax-video/references/h3-keyframes-en.md)与[英文全参考规则](resources/skills/minimax-video/references/h3-reference-en.md)。如已按 MiniMax 的许可取得完整 [h3-prompt-writing](https://github.com/MiniMax-AI/MiniMax-H3/tree/199b7d0e1fd95e7b3eafa8c15eca692534142427/skills/h3-prompt-writing)，可将该目录放入 `~/.framestudio/skills/builtin/minimax-video/`。保留原来的 `SKILL.md` 和 `references/base-en.txt`、`references/ref-en.txt`。所需文件齐备时，工作室会优先使用该模式的本地原文。仓库和公开安装包使用独立编写的规则。
+发行包在 `resources/skills/minimax-video/` 中直接随附 MiniMax 官方 H3 规则，入口是 [`SKILL.md`](resources/skills/minimax-video/SKILL.md)，脚本是 [`script/h3.py`](resources/skills/minimax-video/script/h3.py)，参考文件是 [`references/base-en.txt`](resources/skills/minimax-video/references/base-en.txt) 和 [`references/ref-en.txt`](resources/skills/minimax-video/references/ref-en.txt)。官方源仓库见 [MiniMax-H3/skills](https://github.com/MiniMax-AI/MiniMax-H3/tree/main/skills)。
+
+H3 请求直接执行 `script/h3.py`。`script/hailuo.py` 和 `legacy-hailuo/` 只服务旧海螺型号，包含它们需要的轮询下载依赖和旧型号提示词规则，不会被 H3 Skill 读取。
 
 </details>
 
@@ -207,7 +209,7 @@ npm run dev
 | `npm run docs:screenshots`        | 重新生成 README 截图和 1024 px PNG 图标。                |
 | `npm run dist -- --publish never` | 为当前系统和架构生成安装包，输出到 `release/`。          |
 
-[三平台构建工作流](.github/workflows/build.yml)使用各自原生 runner，产出 macOS DMG、Windows NSIS 与 Linux AppImage。应用图标矢量源在 [studio-icon.svg](src/assets/studio-icon.svg)。第三方运行时许可随发行包提供，MiniMax 海螺脚本还保留其[上游 MIT 许可](resources/skills/minimax-video/upstream/LICENSE)。
+[三平台构建工作流](.github/workflows/build.yml)使用各自原生 runner，产出 macOS DMG、Windows NSIS 与 Linux AppImage。应用图标矢量源在 [studio-icon.svg](src/assets/studio-icon.svg)。第三方运行时许可随发行包提供，MiniMax 海螺脚本还保留其[上游 MIT 许可](resources/skills/minimax-video/legacy-hailuo/upstream/LICENSE)。
 
 ### 准备 GitHub Release
 

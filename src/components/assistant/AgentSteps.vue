@@ -1,7 +1,6 @@
 <script setup vapor>
-import MediaPreview from '../MediaPreview.vue'
 import { computed, ref, watch } from 'vue'
-import { api, asset, media } from '../../store.js'
+import { api } from '../../store.js'
 import Glyph from '../Glyph.vue'
 import AgentReply from './AgentReply.vue'
 import ActivityGroup from './ActivityGroup.vue'
@@ -13,7 +12,7 @@ const props = defineProps({
   events: Array,
   running: Boolean,
   approval: Boolean,
-  activeProject: Boolean,
+  cards: { type: Array, default: () => [] },
   mediaSession: String
 })
 const expanded = ref(props.running),
@@ -53,8 +52,34 @@ const finalText = computed(() => {
   const text = props.turn.replies.at(-1)
   return text && text !== error.value ? text : ''
 })
-const outcomes = computed(() => props.summary?.outputs || [])
-const exports = computed(() => (props.summary?.files || []).filter((file) => /^[\w-]+\.mp4$/.test(file)))
+const outcomes = computed(() => (props.running ? [] : props.summary?.outputs || []))
+const exports = computed(() =>
+  (props.running ? [] : props.summary?.files || []).filter((file) => /^[\w-]+\.mp4$/.test(file))
+)
+const changes = computed(() => (props.running ? [] : props.summary?.changes || []))
+const changeTargetNames = {
+  project: '工程设置',
+  episodes: '分集',
+  episode: '分集',
+  shots: '分镜',
+  cards: '设定卡',
+  assets: '素材',
+  clips: '剪辑片段',
+  audio: '音频'
+}
+const changeOperationNames = { add: '新建', update: '修改', remove: '移除', move: '调整顺序' }
+const mediaNames = { image: '图片', video: '视频', audio: '音频' }
+const resultItems = computed(() => [
+  ...changes.value.map((row) => ({
+    label: (changeOperationNames[row.op] || row.op) + (changeTargetNames[row.target] || row.target),
+    count: row.count
+  })),
+  ...outcomes.value.map((output) => ({
+    label: '生成' + (mediaNames[output.kind] || '素材') + (output.name ? ' · ' + output.name : '')
+  })),
+  ...exports.value.map((file) => ({ label: '导出分集视频 · ' + file }))
+])
+const resultTotal = computed(() => resultItems.value.reduce((total, row) => total + (row.count || 1), 0))
 const compressionLabels = {
   started: '正在压缩上下文',
   completed: '上下文已自动压缩',
@@ -67,7 +92,7 @@ const fallbackProcess = computed(
     !parsed.value.rounds.length && !loading.value && (!props.summary || savedEvents.value || loadError.value)
 )
 
-/** 用户可以中途收合步骤；结束时统一收合，并保持答复与成品可见。 */
+/** 用户可以中途收合步骤；结束时统一收合，并保持答复与改动摘要可见。 */
 watch(
   () => props.running,
   (running) => {
@@ -139,7 +164,13 @@ watch(
     <div v-if="expanded" class="ac-process" aria-label="执行步骤">
       <p v-if="loading" class="ac-progress">正在读取步骤…</p>
       <p v-if="loadError" class="ac-progress">暂时无法读取操作记录。</p>
-      <AgentReply v-if="fallbackProcess" v-for="(text, i) in fallbackReplies" :key="i" :text="text" />
+      <AgentReply
+        v-if="fallbackProcess"
+        v-for="(text, i) in fallbackReplies"
+        :key="i"
+        :text="text"
+        :cards="cards"
+      />
       <template v-for="round in parsed.rounds" :key="round.key">
         <div v-if="round.compaction" class="ac-compaction" :data-state="round.compaction">
           <Glyph name="compress" :size="15" />
@@ -148,7 +179,7 @@ watch(
             {{ tokens.format(round.beforeTokens) }} → {{ tokens.format(round.afterTokens) }} tokens
           </small>
         </div>
-        <AgentReply v-if="round.text" :text="round.text" />
+        <AgentReply v-if="round.text" :text="round.text" :cards="cards" />
         <ActivityGroup v-if="round.calls.length" :calls="round.calls" />
         <p v-if="round.progress" class="ac-progress">{{ round.progress }}</p>
       </template>
@@ -157,38 +188,19 @@ watch(
         {{ stateLabel }}
       </div>
     </div>
-    <AgentReply v-if="finalText" :text="finalText" />
+    <AgentReply v-if="finalText" :text="finalText" :cards="cards" />
     <div v-if="error" class="ac-failure" role="status">{{ error }}</div>
-    <figure v-for="output in outcomes" :key="output.id" class="ac-output">
-      <template v-if="mediaSession && (!activeProject || asset(output.id))">
-        <img
-          v-if="output.kind === 'image'"
-          :src="media(output.id, mediaSession)"
-          :alt="output.name || '生成的分镜图'"
-          loading="lazy"
-        />
-        <MediaPreview          v-else-if="output.kind === 'video'"
-          :src="media(output.id, mediaSession)"
-          :label="output.name"
-        />
-        <MediaPreview kind="audio"          v-else
-          :src="media(output.id, mediaSession)"
-          :label="output.name"
-        />
-      </template>
-      <figcaption>
-        <strong>{{ output.name || '已生成素材' }}</strong>
-        <small v-if="output.model || output.skill">
-          {{ [output.skill, output.model].filter(Boolean).join(' · ') }}
-        </small>
-      </figcaption>
-    </figure>
-    <figure v-for="file in exports" :key="file" class="ac-output">
-      <MediaPreview        v-if="mediaSession"
-        :src="media('exports/' + file, mediaSession)"
-        label="导出的分集视频"
-      />
-      <figcaption><strong>分集成片</strong></figcaption>
-    </figure>
+    <section v-if="resultItems.length" class="ac-change-summary" aria-label="本轮改动">
+      <header>
+        <Glyph name="edit" :size="15" />
+        <strong>本轮完成 {{ resultTotal }} 项改动</strong>
+      </header>
+      <ul>
+        <li v-for="(row, index) in resultItems" :key="row.label + '/' + index">
+          <span>{{ row.label }}</span>
+          <small v-if="row.count > 1">×{{ row.count }}</small>
+        </li>
+      </ul>
+    </section>
   </div>
 </template>

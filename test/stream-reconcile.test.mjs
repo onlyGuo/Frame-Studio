@@ -48,13 +48,35 @@ test('三协议流式文本及完整工具输入', async () => {
         delta: { type: 'input_json_delta', partial_json: '{"id":3}' }
       },
       { type: 'content_block_stop', index: 1 },
-      { type: 'message_delta', delta: { stop_reason: 'tool_use' } },
+      {
+        type: 'content_block_start',
+        index: 2,
+        content_block: { type: 'thinking', thinking: '' }
+      },
+      {
+        type: 'content_block_delta',
+        index: 2,
+        delta: { type: 'thinking_delta', thinking: '先核对' }
+      },
+      {
+        type: 'content_block_delta',
+        index: 2,
+        delta: { type: 'signature_delta', signature: 'sig' }
+      },
+      {
+        type: 'message_delta',
+        delta: { stop_reason: 'tool_use' },
+        usage: { input_tokens: 12, cache_read_input_tokens: 8 }
+      },
       { type: 'message_stop' }
     ]),
     'anthropic',
     (v) => parts.push(v)
   )
   assert.equal(a.content[1].input.id, 3)
+  assert.equal(a.content[2].thinking, '先核对')
+  assert.equal(a.content[2].signature, 'sig')
+  assert.equal(a.usage.cache_read_input_tokens, 8)
   const final = {
     status: 'completed',
     output: [{ type: 'function_call', call_id: 'c2', name: 'read', arguments: '{}' }]

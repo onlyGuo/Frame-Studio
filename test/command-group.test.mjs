@@ -41,7 +41,7 @@ async function fixture(t) {
   return { ctx, settings, project, group, controller, approvals, steps, runner }
 }
 
-test('一次授权 JS 与 Python，脚本读取制作快照、生成事务文件并返回每步回执', async (t) => {
+test('内部 JS 与 Python 命令直接执行，脚本读取制作快照、生成事务文件并返回每步回执', async (t) => {
   const { ctx, settings, project, group, approvals, steps } = await fixture(t)
   settings.update({
     id: 'aliyun-image',
@@ -69,8 +69,7 @@ print('ok')`
       applyEdits: true
     }
   ])
-  assert.equal(approvals.length, 1)
-  assert.equal(approvals[0].commands[1].script.content, py)
+  assert.equal(approvals.length, 0)
   assert.equal(result.results[0].stdout.trim(), project.data.title)
   assert.equal(result.results[1].stdout.trim(), 'ok')
   assert.deepEqual(result.results[1].changed, [{ target: 'shots', op: 'add', id: 'rain' }])
@@ -83,8 +82,7 @@ print('ok')`
   assert.ok(!JSON.stringify(steps).includes('stdout'))
   const denied = {
     executable: 'node',
-    args: ['never.mjs'],
-    script: { path: 'never.mjs', content: 'throw Error()' }
+    args: ['-e', "if(false)require('fs').writeFileSync('/outside/never.txt','x')"]
   }
   ctx.approve = async () => false
   const refusal = await group([denied, denied])
@@ -142,6 +140,49 @@ test('失败、后续独立命令、脚本重试与取消分别保留有序的�
   ])
 })
 
+test('并行模式同时启动互不依赖的步骤，并按输入顺序返回结果', async (t) => {
+  const { group, approvals } = await fixture(t)
+  const waitForOther = (name, other) =>
+    `const fs=require('fs');fs.writeFileSync('${name}.started','');const until=Date.now()+1500;(function wait(){if(fs.existsSync('${other}.started')){console.log('overlap');return}if(Date.now()>until){console.error('步骤没有并行启动');process.exit(2)}setTimeout(wait,10)})()`
+  const result = await group(
+    [
+      { executable: 'node', args: ['-e', waitForOther('first', 'second')] },
+      { executable: 'node', args: ['-e', waitForOther('second', 'first')] }
+    ],
+    { executionMode: 'parallel' }
+  )
+  assert.equal(approvals.length, 0)
+  assert.equal(result.executionMode, 'parallel')
+  assert.deepEqual(
+    result.results.map((row) => [row.status, row.stdout.trim()]),
+    [
+      ['completed', 'overlap'],
+      ['completed', 'overlap']
+    ]
+  )
+})
+
+test('三档审批策略区分内部、低风险外部和高风险命令', async (t) => {
+  const { settings, group, approvals } = await fixture(t)
+  const internal = { executable: 'node', args: ['-p', '6*7'] }
+  const networkRead = { executable: 'node', args: ['-e', "console.log('https://example.test')"] }
+  const externalWrite = {
+    executable: 'node',
+    args: ['-e', "if(false)require('fs').writeFileSync('/outside/never.txt','x')"]
+  }
+  await group([internal])
+  await group([networkRead])
+  assert.equal(approvals.length, 1)
+  await group([externalWrite])
+  assert.equal(approvals.length, 2)
+  settings.data.agent.approvalMode = 'ask'
+  await group([networkRead])
+  assert.equal(approvals.length, 3)
+  settings.data.agent.approvalMode = 'full'
+  await group([externalWrite])
+  assert.equal(approvals.length, 3)
+})
+
 test('运行中的脚本保留人工修改，冲突或失败时工程不会提交一半', async (t) => {
   const { ctx, project, runner, settings, group } = await fixture(t)
   const script = {
@@ -192,8 +233,7 @@ test('Skill 与普通终端命令共用一次调用，返回真实资源引用�
     { skill: 'image', prompt: '角色定妆' },
     { executable: 'node', args: ['-p', '"process-output"'] }
   ])
-  assert.equal(approvals.length, 1)
-  assert.equal(approvals[0].commands[0].model, 'paint')
+  assert.equal(approvals.length, 0)
   assert.equal(result.results[0].assetId, 'painted')
   assert.match(result.results[1].stdout, /process-output/)
   assert.deepEqual(steps[1].metadata.outputs, [{ id: 'painted', kind: 'image', name: '定妆图' }])

@@ -58,7 +58,7 @@ async function execute(project, settings, commands, spec, signal, target, scope)
       cwd: work,
       env,
       signal,
-      capture: !spec.provider
+      capture: true
     })
     signal?.throwIfAborted()
     if (result.code) return result

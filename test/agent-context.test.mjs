@@ -48,7 +48,10 @@ function reply(protocol, text, tool = false) {
   return {
     stop_reason: tool ? 'tool_use' : 'end_turn',
     content: tool
-      ? [{ type: 'tool_use', id: 'receipt-a', name: 'sample', input: args }]
+      ? [
+          { type: 'thinking', thinking: '先执行已授权的工具。', signature: 'fixture-signature' },
+          { type: 'tool_use', id: 'receipt-a', name: 'sample', input: args }
+        ]
       : [{ type: 'text', text }],
     usage: { input_tokens: 100, cache_read_input_tokens: 1030 }
   }
@@ -132,6 +135,16 @@ for (const protocol of ['chat', 'responses', 'anthropic']) {
       assert.ok(saved.includes('执行回执777') && saved.includes('定稿使用蓝色') && saved.includes(question))
       assert.ok(!saved.includes('private-value') && !saved.includes(original))
     }
+    if (protocol === 'anthropic') {
+      const context = JSON.parse(await fs.readFile(path.join(ctx.project.root, 'agent-context.json'), 'utf8'))
+      assert.ok(
+        context.history.some((turn) =>
+          turn.content?.some?.(
+            (block) => block.type === 'thinking' && block.thinking === '先执行已授权的工具。'
+          )
+        )
+      )
+    }
   })
 }
 
@@ -176,6 +189,35 @@ test('Anthropic 输入用量包含读取与写入缓存的 token', () => {
     ),
     14
   )
+})
+
+test('MiMo Anthropic 兼容请求显式启用 thinking，并保留工具回合的思考块', () => {
+  const session = conversation('anthropic', {
+    baseUrl: 'https://token-plan-cn.xiaomimimo.com/anthropic/v1',
+    system: '测试',
+    history: [{ role: 'user', content: '读取工程' }],
+    tools: [{ name: 'read_project', description: '读取工程', parameters: { type: 'object' } }],
+    model: 'mimo-v2.6-flash'
+  })
+  const body = session.body()
+  assert.deepEqual(body.thinking, { type: 'enabled' })
+  assert.deepEqual(body.tool_choice, { type: 'auto' })
+  assert.equal(session.headers('key')['x-api-key'], 'key')
+  const reply = {
+    stop_reason: 'tool_use',
+    content: [
+      { type: 'thinking', thinking: '先检查工程。', signature: 'sig' },
+      { type: 'tool_use', id: 'mimo-call', name: 'read_project', input: { section: 'overview' } }
+    ]
+  }
+  assert.deepEqual(session.receive(reply).calls, [
+    { id: 'mimo-call', name: 'read_project', input: { section: 'overview' } }
+  ])
+  session.results([{ id: 'mimo-call', content: '{"episodes":[]}', failed: false }])
+  const next = session.body()
+  assert.equal(next.messages[1].content[0].type, 'thinking')
+  assert.equal(next.messages[1].content[0].thinking, '先检查工程。')
+  assert.equal(next.messages[2].content[0].type, 'tool_result')
 })
 
 test('工具完成后的下一轮模型请求重试时，沿用原生回执且只执行一次工具', async (t) => {

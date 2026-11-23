@@ -71,6 +71,7 @@ async function summarize(messages, options, budget) {
     const session = conversation(options.protocol, {
       system,
       model: options.cfg.model,
+      baseUrl: options.cfg.url,
       maxTokens: outputTokens,
       history: [{ role: 'user', content }]
     })
@@ -93,31 +94,48 @@ async function summarize(messages, options, budget) {
 
 /** 当前用户请求始终保留原文，每个工具批次整体保留或整体压缩，厂商原生调用与结果不会被拆开。 */
 export class AgentContext {
-  constructor(history, question, setup, saveHistory) {
+  constructor(history, question, setup, saveHistory, nativeHistory = null) {
     this.saveHistory = saveHistory
     this.history = history
+    this.nativeHistory = nativeHistory
     this.question = { role: 'user', content: question }
     this.setup = setup
     this.groups = []
     this.reset()
   }
   reset() {
-    const history = [...this.history, this.question, ...this.groups.flatMap((g) => g.native)]
+    const history = this.nativeHistory
+      ? [...this.nativeHistory, this.question, ...this.groups.flatMap((g) => g.native)]
+      : [...this.history, this.question, ...this.groups.flatMap((g) => g.native)]
     this.session = conversation(this.setup.protocol, { ...this.setup, history })
     this.usageOffset = 0
   }
   inputTokens() {
     return Math.max(1, estimateTokens(this.session.body()) + this.usageOffset)
   }
-  observeUsage(estimated, data) {
+  observeUsage(estimated, data, event) {
     const actual = reportedInput(data, this.setup.protocol)
     if (Number.isFinite(actual)) this.usageOffset = actual - estimated
+    const usage = data?.usage
+    const cacheRead = usage?.cache_read_input_tokens
+    if (Number.isFinite(actual) || Number.isFinite(cacheRead))
+      event?.({
+        type: 'usage',
+        inputTokens: Number.isFinite(actual) ? actual : undefined,
+        outputTokens: Number.isFinite(usage?.output_tokens) ? usage.output_tokens : undefined,
+        cacheReadInputTokens: Number.isFinite(cacheRead) ? cacheRead : undefined
+      })
   }
   /** 未压缩的最后几组回执也写入工程，用户取消下一轮推理时仍能找回已执行工作。 */
   save(pending) {
     const history = [...this.history, this.question, ...this.groups.map((g) => g.record)]
     if (pending) history.push(pending)
-    this.saveHistory(history)
+    this.saveHistory({
+      protocol: this.setup.protocol,
+      history,
+      nativeHistory: this.session.turns,
+      nativeComplete: !pending
+    })
   }
   /** 仅在有可缩减的历史时启动。最新请求和小型完整工具批次直接继续按原协议发送。 */
   async compact(options, threshold, event, force = false) {
@@ -139,6 +157,7 @@ export class AgentContext {
     try {
       const summary = await summarize(records, options, threshold)
       this.history = [{ role: 'user', content: summaryLabel + summary }]
+      this.nativeHistory = null
       this.groups = keepLast ? [last] : []
       this.reset()
       this.save()

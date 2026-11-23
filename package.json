@@ -1,7 +1,7 @@
 {
   "name": "frameforge-studio",
   "productName": "帧序 Frame Studio",
-  "version": "0.7.6",
+  "version": "0.7.7",
   "description": "本地 AI 短剧创作与剪辑工作台",
   "author": "Frame Studio",
   "private": true,
@@ -50,8 +50,7 @@
         "from": "resources/skills",
         "to": "skills",
         "filter": [
-          "**/*",
-          "!minimax-video/h3-prompt-writing/**"
+          "**/*"
         ]
       },
       {

@@ -1,0 +1,58 @@
+[
+  {
+    "models": ["MiniMax-H3", "MiniMax-H3-Highspeed", "MiniMax-H3-Lite", "MiniMax-H3-Max"],
+    "style": "h3",
+    "language": "English",
+    "headings": true,
+    "rules": ["SKILL.md", "references/base-en.txt"],
+    "dialogueField": "integrated_multimodal_description",
+    "fields": {
+      "integrated_multimodal_description": "Return only this field's final English H3 prose. The first characters must be exactly [Shot 1], with no preamble. Preserve the supplied dialogue verbatim inside official <d>[Language] ...</d> tags. Never use [[DIALOGUE]] or add another field heading.",
+      "overall_soundscape": "Return only this field's English prose describing approved ambience and non-verbal physical sounds. No dialogue, lyrics, source-language names, or other field headings.",
+      "non_diegetic_music": "Return only this field's English prose describing approved audience-only music, or N/A. Do not add another field heading."
+    },
+    "mode": "first-frame",
+    "prefix": "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.",
+    "localRules": ["SKILL.md", "references/base-en.txt"]
+  },
+  {
+    "models": ["MiniMax-H3", "MiniMax-H3-Highspeed", "MiniMax-H3-Lite", "MiniMax-H3-Max"],
+    "style": "h3",
+    "language": "English",
+    "headings": true,
+    "rules": ["SKILL.md", "references/base-en.txt"],
+    "dialogueField": "integrated_multimodal_description",
+    "fields": {
+      "integrated_multimodal_description": "Return only this field's final English H3 prose. The first characters must be exactly [Shot 1], with no preamble. Preserve the supplied dialogue verbatim inside official <d>[Language] ...</d> tags. Never use [[DIALOGUE]] or add another field heading.",
+      "overall_soundscape": "Return only this field's English prose describing approved ambience and non-verbal physical sounds. No dialogue, lyrics, source-language names, or other field headings.",
+      "non_diegetic_music": "Return only this field's English prose describing approved audience-only music, or N/A. Do not add another field heading."
+    },
+    "mode": "text",
+    "localRules": ["SKILL.md", "references/base-en.txt"]
+  },
+  {
+    "models": ["MiniMax-H3", "MiniMax-H3-Highspeed", "MiniMax-H3-Lite", "MiniMax-H3-Max"],
+    "style": "h3",
+    "language": "English",
+    "headings": true,
+    "mode": "references",
+    "rules": ["SKILL.md", "references/ref-en.txt"],
+    "dialogueField": "detailed_description",
+    "fields": {
+      "subject_definitions": "Return only this field. Define exactly the supplied references with fixed <Subject N>, <Picture N>, and <Audio N> labels. Use English prose and do not copy source-language names or add another field heading.",
+      "summary": "Return only this field as one short English paragraph about the single target shot and submitted references. Do not add another field heading.",
+      "retention_analysis": "Return only this field as English prose describing retained visual qualities and their mappings. Do not add another field heading.",
+      "detailed_description": "Return only this field as final English H3 prose whose first characters are exactly [Shot 1], with no preamble. Use supplied reference IDs. Preserve the supplied dialogue verbatim inside official <d>[Language] ...</d> tags. Never use [[DIALOGUE]] or inline another field heading.",
+      "overall_soundscape": "Return only this field as English prose describing approved ambience and non-verbal physical sounds. No dialogue, source-language names, or other field headings.",
+      "non_diegetic_music": "Return only this field as English prose describing approved audience-only music, or N/A. Do not add another field heading."
+    },
+    "localRules": ["SKILL.md", "references/ref-en.txt"]
+  },
+  {
+    "rules": ["legacy-hailuo/hailuo-prompt.md"],
+    "dialogueField": "visual",
+    "fields": {
+      "visual": "A single final prompt for the particular Hailuo model, preserving the supplied dialogue verbatim when present."
+    }
+  }
+]

@@ -3,7 +3,7 @@ import { agentDefaults } from '../../shared/agent-settings.mjs'
 import { studioRuntime } from '../agent/studio-runtime.mjs'
 import { AgentContext } from '../agent/context.mjs'
 import { runToolLoop } from '../agent/loop.mjs'
-import { loadHistory, saveHistory } from './conversation-store.mjs'
+import { loadHistoryRecord, saveHistory } from './conversation-store.mjs'
 
 /** 对话循环只处理协议、模型上下文和工具事务。应用提供系统指令、工具及事件展示方式。 */
 export async function runAgent(ctx, question) {
@@ -22,18 +22,20 @@ export async function runAgent(ctx, question) {
         { id: role === 'user' && ctx.turnId ? ctx.turnId : uid(), role, text: text.slice(0, 80000) }
       ]
     })
-  const history = loadHistory(project)
+  const protocol = settings.data.llm
+  const historyRecord = loadHistoryRecord(project, protocol)
+  const history = historyRecord.history
   append('user', question)
   try {
-    const protocol = settings.data.llm
     const cfg = settings.credentials(protocol)
     const runtime = (ctx.runtime || studioRuntime)({ ...ctx, event })
     const limits = { ...agentDefaults, ...settings.data.agent }
     const memory = new AgentContext(
       history,
       question,
-      { protocol, system: runtime.system, tools: runtime.tools, model: cfg.model },
-      (history) => saveHistory(project, sanitized(history))
+      { protocol, system: runtime.system, tools: runtime.tools, model: cfg.model, baseUrl: cfg.url },
+      (value) => saveHistory(project, sanitized(value)),
+      historyRecord.native
     )
     const options = {
       protocol,

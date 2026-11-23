@@ -276,14 +276,17 @@ const referenceOptions = computed(() => {
               @history="travel"
               @manage="ui.page = 'cards'"
             />
-            <label>
-              对白 / 字幕
-              <textarea
-                :value="shot.dialogue"
-                placeholder="角色名：台词。每位说话人另起一行，以便引用角色样音。"
-                @change="patch(shot.id, 'dialogue', $event.target.value)"
-              />
-            </label>
+            <MentionScript
+              :model-value="shot.dialogue"
+              :cards="doc.cards"
+              :kinds="['角色']"
+              :toolbar="false"
+              label="对白"
+              detail="字幕会从这里提取台词正文，不需要重复填写。"
+              @update:model-value="patch(shot.id, 'dialogue', $event)"
+              @history="travel"
+              @manage="ui.page = 'cards'"
+            />
             <ShotAssetReview
               :report="assetReport"
               :can-confirm="Boolean(shot.prompt.trim())"

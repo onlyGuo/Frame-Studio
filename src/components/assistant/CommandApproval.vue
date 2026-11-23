@@ -21,7 +21,9 @@ const names = {
   assetFree: '无出场资产',
   duration: '时长',
   regenerate: '重新生成',
-  applyEdits: '写入工程变更'
+  applyEdits: '写入工程变更',
+  executionMode: '执行模式',
+  approvalRisk: '审批风险'
 }
 
 /** 授权时展示完整参数及即将写入的脚本；数组的边界和空参数都能核对。 */
@@ -45,7 +47,11 @@ function propertyValue(value) {
     : value === false
       ? '否'
       : typeof value === 'string'
-        ? value
+        ? value === 'low'
+          ? '低风险外部操作'
+          : value === 'high'
+            ? '高风险外部操作'
+            : value
         : JSON.stringify(value)
 }
 </script>
@@ -58,6 +64,18 @@ function propertyValue(value) {
     <p>
       {{ projectTitle }} · work
       <span v-if="approval.continueOnError">· 失败后继续后续步骤</span>
+      <span v-if="approval.executionMode === 'parallel'">· 并行执行</span>
+    </p>
+    <div v-if="approval.approvalReview?.length" class="ac-approval-review">
+      <strong>独立审核建议确认以下命令</strong>
+      <ul>
+        <li v-for="row in approval.approvalReview" :key="row.index">
+          第 {{ row.index + 1 }} 项 · {{ row.reason }}
+        </li>
+      </ul>
+    </div>
+    <p v-else-if="approval.approvalReviewError" class="ac-approval-review-error">
+      {{ approval.approvalReviewError }}
     </p>
     <ol class="ac-approval-list">
       <li v-for="(step, index) in steps" :key="index">

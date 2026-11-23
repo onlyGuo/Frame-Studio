@@ -38,7 +38,29 @@ export function modelFixture(route, body) {
       : turns.filter((t) => t.role === 'tool').map((t) => t.content)
   const id = 'call_' + results.length
   let name, args, text
-  if (body.model === 'recover') {
+  const latestUser = [...turns].reverse().find((turn) => turn.role === 'user')
+  const hasReviewTool = (body.tools || []).some(
+    (tool) => tool?.name === 'review_commands' || tool?.function?.name === 'review_commands'
+  )
+  if (hasReviewTool) {
+    let content = latestUser?.content
+    if (Array.isArray(content)) content = content.map((part) => part?.text || part?.input_text || '').join('')
+    const review = JSON.parse(content || '{}')
+    name = 'review_commands'
+    args = {
+      decisions: (review.commands || []).map((command, index) => ({
+        index,
+        decision: command.approvalRisk === 'high' ? 'ask' : 'allow',
+        reason:
+          command.approvalRisk === 'high'
+            ? '测试命令标记为高风险，需要创作者确认。'
+            : '测试命令属于低风险操作。'
+      }))
+    }
+  } else if (body.model === 'recover' && latestUser?.content === '停止测试') {
+    name = 'read_skill'
+    args = { id: 'missing' }
+  } else if (body.model === 'recover') {
     if (!results.length) {
       name = 'read_skill'
       args = { id: 'missing' }
@@ -78,7 +100,10 @@ export function modelFixture(route, body) {
             {
               executable: 'node',
               args: ['check.mjs'],
-              script: { path: 'check.mjs', content: 'console.log(6 * 7)' }
+              script: {
+                path: 'check.mjs',
+                content: "if(false)require('fs').writeFileSync('/outside/never.txt','x')\nconsole.log(6 * 7)"
+              }
             },
             { executable: 'python', args: ['-I', '-c', 'print(7 * 6)'] }
           ]

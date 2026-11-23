@@ -9,7 +9,7 @@ async function infer(memory, options, threshold, event) {
     const estimate = estimateTokens(memory.session.body())
     try {
       const response = await requestModel(memory.session, options)
-      memory.observeUsage(estimate, response)
+      memory.observeUsage(estimate, response, event)
       return response
     } catch (err) {
       if (!err.contextLimit || recovered) throw err
@@ -37,6 +37,7 @@ export async function runToolLoop({ memory, runtime, options, threshold, event, 
     }
     if (!calls.length) {
       if (!text) throw Error('模型没有返回文本或工具调用')
+      memory.save()
       return { rounds: round }
     }
     if (
@@ -109,6 +110,7 @@ export async function runToolLoop({ memory, runtime, options, threshold, event, 
     }
     session.results(results)
     memory.groups.push({ record: toolRecord(redact(text), transactions), native: session.turns.slice(start) })
+    memory.save()
   }
   throw Error('已达到 48 轮执行上限。已完成的工作保存在工程中，可发送新消息继续')
 }

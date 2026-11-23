@@ -151,11 +151,16 @@ test('同一 H3 Skill 整理手动与 Agent 制片，按模式发送原对白和
       const source = JSON.parse((request.messages || request.input).at(-1).content)
       const tool = request.tools[0].function || request.tools[0]
       assert.equal(tool.name, 'return_video_prompt')
-      assert.doesNotMatch(data, /白鼠狼|不会发给整理模型的原台词|private-media-key|红色常服|private-episode/)
+      assert.doesNotMatch(data, /白鼠狼|private-media-key|红色常服|private-episode/)
       if (source.skill === 'aliyun-video')
-        return reply(formattedReply(protocol, { visual: '图1中的人物走向门口。\n[[DIALOGUE]]' }))
+        return reply(
+          formattedReply(protocol, {
+            visual:
+              '图1中的人物走向门口。人物说：<d>[Chinese] 不会发给整理模型的原台词。</d> 旁白说：<d>[Chinese] 他停了下来。</d>'
+          })
+        )
       const rules = request.system || request.instructions || request.messages[0].content
-      assert.match(rules, /4\.4 Speakers, Dialogue, and Singing|H3 prompt construction in Frame Studio/)
+      assert.match(rules, /H3 Prompt Writing|references\/base-en\.txt/)
       if (source.mode === 'references') assert.match(rules, /retention_analysis/)
       inputs.push({ protocol, source })
       const fields = Object.fromEntries(
@@ -165,7 +170,11 @@ test('同一 H3 Skill 整理手动与 Agent 制片，按模式发送原对白和
         source.mode === 'references'
           ? '[Shot 1] <Subject 1> wearing the travel outfit approaches the doorway.'
           : '[Shot 1] A continuous pan across the doorway.'
-      fields[source.dialogueField] = detail + (source.hasDialogue && !breakFormat ? '\n[[DIALOGUE]]' : '')
+      fields[source.dialogueField] =
+        detail +
+        (source.hasDialogue && !breakFormat
+          ? '\n<Subject 1> says: <d>[Chinese] 不会发给整理模型的原台词。</d> The narrator says in an off-screen voiceover: <d>[Chinese] 他停了下来。</d>'
+          : '')
       return reply(formattedReply(protocol, fields))
     } catch (error) {
       problems.push(error)
@@ -192,10 +201,7 @@ test('同一 H3 Skill 整理手动与 Agent 制片，按模式发送原对白和
     ffmpeg: ffmpegPath
   })
   const publicSkills = path.join(dir, 'public-skills')
-  await fs.cp(path.resolve('resources/skills'), publicSkills, {
-    recursive: true,
-    filter: (file) => path.basename(file) !== 'h3-prompt-writing'
-  })
+  await fs.cp(path.resolve('resources/skills'), publicSkills, { recursive: true })
   const skills = new Skills(settings, publicSkills, commands)
   settings.update({
     id: 'minimax-video',
@@ -276,13 +282,32 @@ test('同一 H3 Skill 整理手动与 Agent 制片，按模式发送原对白和
   assert.doesNotMatch(promptItem.text, /白鼠狼|\[\[DIALOGUE\]\]/)
   assert.equal(project.data.episodes[0].shots[0].prompt, refShot.prompt)
   assert.equal(project.data.episodes[0].shots[0].dialogue, refShot.dialogue)
-  assert.match(inputs[0].source.visual, /阿荷 · 旅行服/)
-  assert.equal(inputs[0].source.references[0].name, '阿荷 · 旅行服')
+  assert.match(inputs[0].source.visual, /<Subject 1>/)
+  assert.doesNotMatch(inputs[0].source.visual, /阿荷|旅行服/)
+  assert.match(inputs[0].source.dialogue, /<Subject 1>：不会发给整理模型的原台词。/)
+  assert.doesNotMatch(inputs[0].source.dialogue, /^阿荷/u)
+  assert.deepEqual(inputs[0].source.references[0], {
+    picture: '<Picture 1>',
+    subject: '<Subject 1>',
+    type: '角色'
+  })
 
   selectLLM('responses')
   const group = await executeTool(
     'run_command',
-    { commands: [{ skill: 'minimax-video', shotId: frameShot.id }] },
+    {
+      commands: [
+        {
+          skill: 'minimax-video',
+          shotId: frameShot.id,
+          finalPrompt:
+            'For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.\n\n' +
+            'integrated_multimodal_description: [Shot 1] A continuous pan across the doorway.\n\n' +
+            'overall_soundscape: Soft wind moves the doorway curtain.\n\n' +
+            'non_diegetic_music: N/A'
+        }
+      ]
+    },
     ctx
   )
   assert.equal(group.results[0].status, 'completed', JSON.stringify(group))
@@ -290,8 +315,7 @@ test('同一 H3 Skill 整理手动与 Agent 制片，按模式发送原对白和
   assert.equal(submissions[1].content[1].role, 'first_frame')
   assert.match(submissions[1].content[0].text, /^For the target video, at 0\.00 seconds/)
   assert.doesNotMatch(submissions[1].content[0].text, /<d>/)
-  assert.equal(inputs[1].source.hasDialogue, false)
-  assert.deepEqual(inputs[1].source.performanceNotes, ['风吹动门帘'])
+  assert.equal(inputs.length, 1)
 
   selectLLM('anthropic')
   settings.update({ id: 'minimax-video', url: base + '/proxy/v2', model: 'MiniMax-H3-Max' })
@@ -304,7 +328,6 @@ test('同一 H3 Skill 整理手动与 Agent 制片，按模式发送原对白和
     inputs.map(({ protocol, source }) => [protocol, source.mode]),
     [
       ['chat', 'references'],
-      ['responses', 'first-frame'],
       ['anthropic', 'text']
     ]
   )
@@ -349,14 +372,14 @@ test('同一 H3 Skill 整理手动与 Agent 制片，按模式发送原对白和
   breakFormat = true
   await assert.rejects(
     skills.generate(project, 'minimax-video', { episodeId: episode.id, shotId: refShot.id }, signal),
-    /对白.*占位符/
+    /对白.*H3/
   )
-  assert.equal(inputs.length, 6)
+  assert.equal(inputs.length, 5)
   assert.equal(submissions.length, 3)
   assert.deepEqual(problems, [])
   const ref = await executeTool(
     'read_skill',
-    { id: 'minimax-video', file: 'references/h3-reference-en.md' },
+    { id: 'minimax-video', file: 'references/ref-en.txt' },
     ctx
   )
   assert.match(ref.text, /retention_analysis/)

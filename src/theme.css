@@ -18,6 +18,8 @@
   --line: #dee1e6;
   --edge: #c8cdd5;
   --selected: #e3e9f3;
+  --selection-bg: #5878b7;
+  --selection-ink: #fff;
   --accent: #526fa8;
   --on-accent: #fff;
   --accent-text: #405e93;
@@ -56,6 +58,8 @@
   --line: #383b41;
   --edge: #4b4f58;
   --selected: #343f53;
+  --selection-bg: #7599d7;
+  --selection-ink: #101722;
   --accent: #4d679a;
   --accent-hover: #556fa2;
   --accent-text: #b6c9ed;
@@ -109,8 +113,8 @@
   --tone-fill: color-mix(in srgb, var(--tone, var(--accent-text)) 15%, var(--surface));
 }
 ::selection {
-  background: var(--selected);
-  color: var(--ink);
+  background: var(--selection-bg);
+  color: var(--selection-ink);
 }
 :root {
   scrollbar-color: var(--edge) transparent;

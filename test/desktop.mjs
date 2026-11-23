@@ -493,12 +493,24 @@ try {
   await closePreferences(preferences)
   const origin = await page.evaluate(async () => (await window.studio.initial()).current)
   await page.getByRole('button', { name: '创作助手', exact: true }).click()
+  assert.equal(await page.getByRole('button', { name: '命令审批方式' }).innerText(), '帮我批准')
+  await page.getByRole('button', { name: '命令审批方式' }).click()
+  assert.deepEqual(await page.getByRole('menuitemradio').allTextContents(), [
+    '帮我批准独立审核后自动放行安全命令',
+    '请求批准外部文件或网络操作执行前询问',
+    '完全访问权限所有命令直接执行'
+  ])
+  await page.keyboard.press('Escape')
   await page.getByPlaceholder('描述想创作或修改的内容…').fill('创建雨夜分镜、生成图片并检查本机运行时')
   await page.getByRole('button', { name: '发送', exact: true }).click()
   await Promise.race([
     receivedImage.promise,
     new Promise((_, reject) => setTimeout(() => reject(Error('模型未调用已配置的生图服务')), 10000).unref())
   ])
+  await page.evaluate(async () => {
+    const { config } = await window.studio.initial()
+    await window.studio.agentPreferences({ ...config.agent, approvalMode: 'ask' })
+  })
   await page.getByRole('button', { name: '关闭助手' }).click()
   await page.getByRole('button', { name: '剧本写作', exact: true }).click()
   await page.getByLabel('剧本正文').fill('后台生图时手工保留的旁白。')
@@ -539,7 +551,10 @@ try {
   await page.getByRole('button', { name: '收起执行过程' }).last().click()
   await chooseOption(page, appearance, 'system')
   assert.equal(await app.evaluate(({ nativeTheme }) => nativeTheme.themeSource), 'system')
-  await page.waitForFunction(() => document.querySelector('.ac-output img')?.naturalWidth === 640)
+  await page
+    .getByRole('region', { name: '本轮改动' })
+    .getByText(/生成图片/)
+    .waitFor()
   const other = await page.evaluate(async () => (await window.studio.initial()).current)
   assert.equal(other.data.title, '后台隔离')
   assert.equal(other.data.messages.length, 0)

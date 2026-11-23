@@ -23,13 +23,14 @@ test('助手运行设置支持旧配置、单独保存和校验', async (t) => {
   const legacy = { contextThreshold: 150000, idleTimeoutSeconds: 450 }
   await fs.writeFile(file, JSON.stringify({ ...settings.data, agent: legacy }))
   const migrated = new Settings(root, {})
-  const carriedOver = { contextThreshold: 150000, responseTimeoutSeconds: 450 }
+  const carriedOver = { contextThreshold: 150000, responseTimeoutSeconds: 450, approvalMode: 'auto' }
   assert.deepEqual(migrated.view().agent, carriedOver)
   assert.deepEqual(JSON.parse(await fs.readFile(file, 'utf8')).agent, carriedOver)
-  const updated = { contextThreshold: 180000, responseTimeoutSeconds: 480 }
+  const updated = { contextThreshold: 180000, responseTimeoutSeconds: 480, approvalMode: 'ask' }
   migrated.setAgentPreferences(updated)
   assert.throws(() => migrated.setAgentPreferences({ ...updated, contextThreshold: NaN }), /阈值/)
   assert.throws(() => migrated.setAgentPreferences({ ...updated, responseTimeoutSeconds: 0 }), /超时/)
+  assert.throws(() => migrated.setAgentPreferences({ ...updated, approvalMode: 'invalid' }), /审批策略/)
   assert.deepEqual(new Settings(root, {}).view().agent, updated)
   assert.equal(migrated.view().llm, 'anthropic')
 })

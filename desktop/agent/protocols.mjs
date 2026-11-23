@@ -1,5 +1,5 @@
 /** 每个适配器保留厂商原生工具调用及其 ID，下一轮按原协议关联真实结果。 */
-export function conversation(protocol, { system, history, tools = [], model, maxTokens }) {
+export function conversation(protocol, { system, history, tools = [], model, maxTokens, baseUrl = '' }) {
   const turns = [...history]
   const common = tools.map(({ name, description, parameters }) => ({ name, description, parameters }))
   if (protocol === 'chat')
@@ -65,6 +65,7 @@ export function conversation(protocol, { system, history, tools = [], model, max
       }
     }
   if (protocol !== 'anthropic') throw Error('不支持的语言模型协议')
+  const isMiMo = /(?:xiaomimimo\.com|mimo\.mi\.com)$/i.test(new URL(baseUrl || 'http://localhost').hostname)
   return {
     turns,
     route: '/messages',
@@ -74,6 +75,7 @@ export function conversation(protocol, { system, history, tools = [], model, max
       max_tokens: maxTokens || 8192,
       system,
       messages: turns,
+      ...(isMiMo ? { thinking: { type: 'enabled' }, tool_choice: { type: 'auto' } } : {}),
       ...(common.length
         ? {
             tools: common.map(({ name, description, parameters }) => ({

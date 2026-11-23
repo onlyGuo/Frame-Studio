@@ -2,21 +2,25 @@
 import base64
 import json
 import os
-import re
 import sys
 from pathlib import Path
 
 import requests
 
-sys.path[:0] = [str(Path(__file__).resolve().parent / "upstream"), str(Path(__file__).resolve().parent)]
+root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(root / "legacy-hailuo" / "upstream"))
 os.environ["MINIMAX_API_KEY"] = os.environ["STUDIO_API_KEY"]
 os.environ["MINIMAX_API_BASE"] = os.environ["STUDIO_API_URL"]
 import minimax_video as upstream
 
 
-def fail(job, reason, status=None, stage="submit"):
+def fail(job, reason, status=None, stage="submit", detail=""):
     """只回送允许显示的错误类别，不把密钥、路径和厂商响应传入模型。"""
-    Path(job["output"] + ".diagnostic").write_text(json.dumps({"stage": stage, "reason": reason, "status": status}))
+    safe_detail = detail if isinstance(detail, str) else ""
+    safe_detail = " ".join(safe_detail.split())[:400]
+    Path(job["output"] + ".diagnostic").write_text(
+        json.dumps({"stage": stage, "reason": reason, "status": status, "detail": safe_detail}, ensure_ascii=False)
+    )
     raise SystemExit(1)
 
 
@@ -38,7 +42,14 @@ def create_image_task(job, model, frame):
         timeout=90, allow_redirects=False
     )
     if response.status_code != 200:
-        fail(job, "http", response.status_code)
+        detail = ""
+        try:
+            payload = response.json()
+            base_resp = payload.get("base_resp", {}) if isinstance(payload, dict) else {}
+            detail = base_resp.get("status_msg", "")
+        except ValueError:
+            pass
+        fail(job, "http", response.status_code, detail=detail)
     result = response.json()
     if result.get("base_resp", {}).get("status_code", 0) or not result.get("task_id"):
         fail(job, "task")
@@ -52,9 +63,6 @@ def main():
         sys.stdout.reconfigure(encoding="utf-8")
     job = json.load(sys.stdin.buffer)
     model = os.environ["STUDIO_MODEL"]
-    if re.fullmatch(r"MiniMax-H3(?:-(?:Highspeed|Lite|Max))?", model, re.IGNORECASE):
-        import h3
-        return h3.generate(job, model, fail)
     refs = job.get("references") or []
     image_models = {"MiniMax-Hailuo-2.3", "MiniMax-Hailuo-2.3-Fast", "MiniMax-Hailuo-02", "I2V-01-Director", "I2V-01-live", "I2V-01"}
     if not refs and (model.startswith("I2V-") or model == "MiniMax-Hailuo-2.3-Fast"):

@@ -64,12 +64,15 @@ export async function receiveModelResponse(res, protocol, onText) {
         }
         if (delta.type === 'input_json_delta')
           partial.set(e.index, (partial.get(e.index) || '') + delta.partial_json)
-        if (delta.type === 'thinking_delta') block.thinking += delta.thinking
-        if (delta.type === 'signature_delta') block.signature = delta.signature
+        if (delta.type === 'thinking_delta') block.thinking = (block.thinking || '') + delta.thinking
+        if (delta.type === 'signature_delta') block.signature = (block.signature || '') + delta.signature
       }
       if (e.type === 'content_block_stop' && partial.has(e.index))
         blocks[e.index].input = JSON.parse(partial.get(e.index))
-      if (e.type === 'message_delta') reason = e.delta.stop_reason
+      if (e.type === 'message_delta') {
+        reason = e.delta.stop_reason
+        if (e.usage) usage = { ...usage, ...e.usage }
+      }
       if (e.type === 'message_stop') {
         finished = true
         final = { content: blocks, stop_reason: reason }

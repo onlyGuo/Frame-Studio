@@ -10,7 +10,9 @@ import {
   answerAgentApproval,
   openProject,
   clearAgentHistory,
-  openSettings
+  openSettings,
+  perform,
+  notify
 } from '../store.js'
 import Glyph from './Glyph.vue'
 import AgentSteps from './assistant/AgentSteps.vue'
@@ -24,6 +26,7 @@ const scroll = ref(null),
 const scope = ref('task'),
   historyOpen = ref(false),
   focusMode = ref(false),
+  approvalMenuOpen = ref(false),
   following = ref(true),
   submitting = ref(false)
 const drafts = reactive(new Map()),
@@ -88,6 +91,7 @@ const turns = computed(() => {
   return [...groupTurns(source.messages), currentTurn]
 })
 const mediaSession = computed(() => (viewingElsewhere.value ? task.value.session : ui.session))
+const assistantCards = computed(() => doc.value?.cards || [])
 const live = computed(() => (showTask.value ? task.value : null))
 const events = computed(() => live.value?.events || [])
 const liveSummary = computed(() => (live.value ? describeRun(live.value) : null))
@@ -102,6 +106,15 @@ const historyById = computed(
 const historyError = ref('')
 const historyVersion = ref(0)
 const approval = computed(() => (displayedRun.value ? task.value.approval : null))
+const approvalMode = computed(() => ui.config?.agent?.approvalMode || 'auto')
+const approvalModeLabel = computed(() =>
+  approvalMode.value === 'ask' ? '请求批准' : approvalMode.value === 'full' ? '完全访问权限' : '帮我批准'
+)
+const approvalModes = [
+  { value: 'auto', title: '帮我批准', description: '独立审核后自动放行安全命令' },
+  { value: 'ask', title: '请求批准', description: '外部文件或网络操作执行前询问' },
+  { value: 'full', title: '完全访问权限', description: '所有命令直接执行' }
+]
 
 /** 会话切换时仅请求小型回执；工具参数在展开所选轮次时读取。 */
 watch(
@@ -246,11 +259,26 @@ async function clearChat() {
 }
 /** 优先关闭会话历史，保留外层快捷键收起整个面板的行为。 */
 function localEscape(event) {
+  if (event.key === 'Escape' && approvalMenuOpen.value) {
+    event.preventDefault()
+    event.stopPropagation()
+    approvalMenuOpen.value = false
+    return
+  }
   if (event.key !== 'Escape' || (!historyOpen.value && !focusMode.value)) return
   event.preventDefault()
   event.stopPropagation()
   if (historyOpen.value) historyOpen.value = false
   else focusMode.value = false
+}
+/** 保存助手命令审批方式；后续命令按当前策略处理。 */
+function chooseApprovalMode(mode) {
+  approvalMenuOpen.value = false
+  if (mode === approvalMode.value || !ui.config?.agent) return
+  perform('正在保存命令审批设置', async () => {
+    ui.config = await api.agentPreferences({ ...ui.config.agent, approvalMode: mode })
+    notify(mode === 'auto' ? '已切换为自动批准命令' : '已切换为每次询问')
+  })
 }
 watch([() => task.value?.id, () => ui.root], () => {
   scope.value = !doc.value || ui.agentRunning ? 'task' : 'workspace'
@@ -290,6 +318,7 @@ onBeforeUnmount(() => window.removeEventListener('resize', syncViewport))
     :style="focusMode ? undefined : { width: actualWidth + 'px' }"
     aria-label="创作助手会话面板"
     @keydown="localEscape"
+    @click="approvalMenuOpen = false"
   >
     <div
       v-if="!focusMode"
@@ -404,7 +433,7 @@ onBeforeUnmount(() => window.removeEventListener('resize', syncViewport))
           :events="live?.id === turn.id ? events : undefined"
           :running="displayedRun && live?.id === turn.id"
           :approval="!!approval && live?.id === turn.id"
-          :active-project="!viewingElsewhere"
+          :cards="assistantCards"
           :media-session="mediaSession"
         />
       </article>
@@ -444,6 +473,38 @@ onBeforeUnmount(() => window.removeEventListener('resize', syncViewport))
           @keydown="composerKey"
         />
         <div class="ac-compose-bar">
+          <div class="ac-approval-picker" @click.stop>
+            <button
+              class="ac-approval-trigger"
+              type="button"
+              aria-label="命令审批方式"
+              :aria-expanded="approvalMenuOpen"
+              aria-haspopup="menu"
+              @click="approvalMenuOpen = !approvalMenuOpen"
+            >
+              <Glyph name="lock" :size="13" />
+              <span>{{ approvalModeLabel }}</span>
+              <Glyph name="chevron" :size="10" />
+            </button>
+            <div v-if="approvalMenuOpen" class="ac-approval-menu" role="menu" aria-label="命令审批方式">
+              <strong>如何批准助手命令？</strong>
+              <button
+                v-for="item in approvalModes"
+                :key="item.value"
+                type="button"
+                role="menuitemradio"
+                :aria-checked="approvalMode === item.value"
+                @click.stop="chooseApprovalMode(item.value)"
+              >
+                <Glyph name="lock" :size="14" />
+                <span>
+                  <b>{{ item.title }}</b>
+                  <small>{{ item.description }}</small>
+                </span>
+                <Glyph v-if="approvalMode === item.value" name="check" :size="14" />
+              </button>
+            </div>
+          </div>
           <button class="ac-model" @click="openSettings()" title="模型配置">
             <Glyph name="settings" :size="13" />
             <span>{{ profile?.model || '模型配置' }}</span>

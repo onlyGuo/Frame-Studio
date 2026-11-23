@@ -342,6 +342,13 @@
 .shot-form textarea {
   min-height: 58px;
 }
+.shot-dialogue-field small {
+  margin-top: -2px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.45;
+}
 .studio-work .record,
 .studio-work .editor-paper {
   border-radius: 7px;
