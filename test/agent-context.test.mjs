@@ -200,6 +200,7 @@ test('MiMo Anthropic 兼容请求显式启用 thinking，并保留工具回合�
     model: 'mimo-v2.6-flash'
   })
   const body = session.body()
+  assert.equal(body.max_tokens, 131072)
   assert.deepEqual(body.thinking, { type: 'enabled' })
   assert.deepEqual(body.tool_choice, { type: 'auto' })
   assert.equal(session.headers('key')['x-api-key'], 'key')

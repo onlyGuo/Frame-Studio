@@ -66,13 +66,15 @@ export function conversation(protocol, { system, history, tools = [], model, max
     }
   if (protocol !== 'anthropic') throw Error('不支持的语言模型协议')
   const isMiMo = /(?:xiaomimimo\.com|mimo\.mi\.com)$/i.test(new URL(baseUrl || 'http://localhost').hostname)
+  // MiMo 的 max_tokens 同时计算 thinking 和最终答复，8192 容易在复杂工具回合中截断。
+  const defaultMaxTokens = isMiMo ? 131072 : 8192
   return {
     turns,
     route: '/messages',
     headers: (key) => ({ 'x-api-key': key, 'anthropic-version': '2023-06-01' }),
     body: () => ({
       model,
-      max_tokens: maxTokens || 8192,
+      max_tokens: maxTokens || defaultMaxTokens,
       system,
       messages: turns,
       ...(isMiMo ? { thinking: { type: 'enabled' }, tool_choice: { type: 'auto' } } : {}),
